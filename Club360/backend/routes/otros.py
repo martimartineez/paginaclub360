@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Usuario, Actividad, Asistencia, Reserva, Suspension, Pago
+from models import db, Usuario, Actividad, Asistencia, Reserva, Suspension, Pago, Clase
 from datetime import datetime
 
 usuarios_bp = Blueprint('usuarios', __name__)
@@ -24,6 +24,7 @@ def require_rol(*roles):
 
 
 # ---- USUARIOS ----
+
 @usuarios_bp.route('/', methods=['GET'])
 @jwt_required()
 @require_rol('administrador', 'empleado')
@@ -40,7 +41,14 @@ def listar_usuarios():
             (Usuario.email.ilike(f'%{q}%')) |
             (Usuario.dni.ilike(f'%{q}%'))
         )
-    return jsonify([u.to_dict() for u in query.all()]), 200
+    usuarios = query.all()
+    result = []
+    for u in usuarios:
+        d = u.to_dict()
+        suspensiones = Suspension.query.filter_by(usuario_id=u.id, activa=True).all()
+        d['suspensiones_activas'] = [s.to_dict() for s in suspensiones]
+        result.append(d)
+    return jsonify(result), 200
 
 
 @usuarios_bp.route('/<int:uid>', methods=['GET'])
@@ -52,10 +60,71 @@ def get_usuario(uid):
         return jsonify({'error': 'Sin permisos'}), 403
     target = Usuario.query.get_or_404(uid)
     data = target.to_dict()
-    # Incluir suspensiones activas
     suspensiones = Suspension.query.filter_by(usuario_id=uid, activa=True).all()
     data['suspensiones_activas'] = [s.to_dict() for s in suspensiones]
     return jsonify(data), 200
+
+
+@usuarios_bp.route('/<int:uid>/reservas', methods=['GET'])
+@jwt_required()
+@require_rol('administrador', 'empleado')
+def get_reservas_usuario(uid):
+    """Ver todas las reservas de un cliente específico"""
+    reservas = Reserva.query.filter_by(usuario_id=uid).order_by(Reserva.fecha_creacion.desc()).all()
+    result = []
+    for r in reservas:
+        d = r.to_dict()
+        # Incluir senia pendiente
+        senia_pendiente = (
+            r.tipo == 'no_abonado' and
+            not r.senia_pagada and
+            r.estado == 'activa'
+        )
+        d['senia_pendiente'] = senia_pendiente
+        d['monto_senia'] = float(r.monto_total or 0) * 0.5 if senia_pendiente else 0
+        result.append(d)
+    return jsonify(result), 200
+
+
+@usuarios_bp.route('/<int:uid>/pagar-senia/<int:reserva_id>', methods=['POST'])
+@jwt_required()
+@require_rol('administrador', 'empleado')
+def pagar_senia_empleado(uid, reserva_id):
+    """Empleado registra el pago de la seña pendiente de un cliente"""
+    user_id = get_jwt_identity()
+    reserva = Reserva.query.get_or_404(reserva_id)
+    if reserva.usuario_id != uid:
+        return jsonify({'error': 'La reserva no pertenece a este usuario'}), 400
+    if reserva.senia_pagada:
+        return jsonify({'error': 'La seña ya fue pagada'}), 400
+
+    data = request.get_json()
+    metodo = data.get('metodo', 'efectivo')
+    monto_senia = float(reserva.monto_total or 0) * 0.5
+
+    pago = Pago(
+        reserva_id=reserva_id,
+        monto=monto_senia,
+        metodo=metodo,
+        tipo_pago='senia',
+        registrado_por=int(user_id)
+    )
+    db.session.add(pago)
+    reserva.senia_pagada = True
+    reserva.monto_pagado = float(reserva.monto_pagado or 0) + monto_senia
+    db.session.commit()
+    return jsonify({'mensaje': 'Seña registrada', 'pago': pago.to_dict(), 'reserva': reserva.to_dict()}), 200
+
+
+@usuarios_bp.route('/<int:uid>/inscribir', methods=['POST'])
+@jwt_required()
+@require_rol('administrador', 'empleado')
+def inscribir_cliente(uid):
+    """Empleado/admin inscribe a un cliente en una clase"""
+    from routes.reservas import crear_reserva_interna
+    data = request.get_json()
+    data['usuario_id'] = uid
+    return crear_reserva_interna(data, get_jwt_identity())
 
 
 @usuarios_bp.route('/<int:uid>', methods=['PUT'])
@@ -75,6 +144,7 @@ def update_usuario(uid):
 
 
 # ---- ACTIVIDADES ----
+
 @actividades_bp.route('/', methods=['GET'])
 def get_actividades():
     actividades = Actividad.query.filter_by(activa=True).all()
@@ -110,6 +180,7 @@ def update_actividad(aid):
 
 
 # ---- ASISTENCIA ----
+
 @asistencia_bp.route('/registrar', methods=['POST'])
 @jwt_required()
 @require_rol('empleado', 'administrador')
@@ -117,7 +188,6 @@ def registrar_asistencia():
     user_id = get_jwt_identity()
     data = request.get_json()
     qr_data = data.get('qr_data', '')
-    # Extraer reserva_id del QR
     if 'CLUB360-RESERVA-' in qr_data:
         reserva_id = int(qr_data.replace('CLUB360-RESERVA-', ''))
     else:
@@ -149,13 +219,19 @@ def registrar_asistencia():
 
 
 # ---- SUSPENSIONES ----
+
 @suspensiones_bp.route('/', methods=['GET'])
 @jwt_required()
 @require_rol('administrador', 'empleado')
 def listar_suspensiones():
     activas = request.args.get('activas', 'true') == 'true'
     suspensiones = Suspension.query.filter_by(activa=activas).all()
-    return jsonify([s.to_dict() for s in suspensiones]), 200
+    result = []
+    for s in suspensiones:
+        d = s.to_dict()
+        d['usuario'] = s.usuario.to_dict() if s.usuario else None
+        result.append(d)
+    return jsonify(result), 200
 
 
 @suspensiones_bp.route('/', methods=['POST'])
@@ -186,22 +262,10 @@ def solicitar_retiro(susp_id):
         return jsonify({'error': 'Sin permisos'}), 403
 
     data = request.get_json()
-    metodo = data.get('metodo')  # efectivo o tarjeta_credito
+    metodo = data.get('metodo', 'efectivo')
 
-    # Levantar suspensión
     susp.activa = False
     susp.fecha_levantamiento = datetime.utcnow()
-
-    # Registrar pago de deuda
-    pago = Pago(
-        reserva_id=None,
-        monto=susp.monto_deuda,
-        metodo=metodo,
-        tipo_pago='suspension',
-        registrado_por=int(user_id)
-    )
-    # Nota: reserva_id podría ser null en este caso especial
-    db.session.add(susp)
     db.session.commit()
 
     return jsonify({'mensaje': 'Suspensión levantada', 'suspension': susp.to_dict()}), 200

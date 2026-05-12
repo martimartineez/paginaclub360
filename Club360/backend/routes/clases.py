@@ -18,16 +18,25 @@ def require_rol(*roles):
         return wrapper
     return decorator
 
+
 @clases_bp.route('/', methods=['GET'])
 def get_clases():
     actividad_id = request.args.get('actividad_id')
-    dia = request.args.get('dia')
+    desde = request.args.get('desde')   # fecha YYYY-MM-DD
+    hasta = request.args.get('hasta')
+    solo_activas = request.args.get('solo_activas', 'true') == 'true'
+
     query = Clase.query.filter_by(activa=True)
+    if solo_activas:
+        query = query.filter_by(cancelada=False)
     if actividad_id:
         query = query.filter_by(actividad_id=actividad_id)
-    if dia:
-        query = query.filter_by(dia_semana=dia)
-    clases = query.all()
+    if desde:
+        query = query.filter(Clase.fecha >= desde)
+    if hasta:
+        query = query.filter(Clase.fecha <= hasta)
+
+    clases = query.order_by(Clase.fecha, Clase.hora_inicio).all()
     return jsonify([c.to_dict() for c in clases]), 200
 
 
@@ -42,9 +51,17 @@ def get_clase(clase_id):
 @require_rol('administrador')
 def create_clase():
     data = request.get_json()
+    fecha_str = data.get('fecha')  # YYYY-MM-DD
+    if not fecha_str:
+        return jsonify({'error': 'La fecha es requerida'}), 400
+    try:
+        fecha = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Formato de fecha inválido (YYYY-MM-DD)'}), 400
+
     clase = Clase(
         actividad_id=data['actividad_id'],
-        dia_semana=data['dia_semana'],
+        fecha=fecha,
         hora_inicio=datetime.strptime(data['hora_inicio'], '%H:%M').time(),
         cupo_maximo=data['cupo_maximo']
     )
@@ -59,27 +76,38 @@ def create_clase():
 def update_clase(clase_id):
     clase = Clase.query.get_or_404(clase_id)
     data = request.get_json()
+    # Solo se puede modificar el cupo
     if 'cupo_maximo' in data:
-        clase.cupo_maximo = data['cupo_maximo']
-    if 'hora_inicio' in data:
-        clase.hora_inicio = datetime.strptime(data['hora_inicio'], '%H:%M').time()
-    if 'activa' in data:
-        clase.activa = data['activa']
+        nuevo_cupo = int(data['cupo_maximo'])
+        inscriptos = Reserva.query.filter_by(clase_id=clase_id, estado='activa').count()
+        if nuevo_cupo < inscriptos:
+            return jsonify({'error': f'No podés bajar el cupo por debajo de los inscriptos actuales ({inscriptos})'}), 400
+        clase.cupo_maximo = nuevo_cupo
     db.session.commit()
     return jsonify(clase.to_dict()), 200
+
+
+@clases_bp.route('/<int:clase_id>/cancelar', methods=['POST'])
+@jwt_required()
+@require_rol('administrador')
+def cancelar_clase(clase_id):
+    clase = Clase.query.get_or_404(clase_id)
+    if clase.cancelada:
+        return jsonify({'error': 'La clase ya está cancelada'}), 400
+    clase.cancelada = True
+    # Liberar todas las reservas activas de esta clase
+    reservas = Reserva.query.filter_by(clase_id=clase_id, estado='activa').all()
+    for r in reservas:
+        r.estado = 'cancelada'
+    db.session.commit()
+    return jsonify({'mensaje': f'Clase del {clase.fecha} cancelada. {len(reservas)} reserva(s) liberadas.'}), 200
 
 
 @clases_bp.route('/<int:clase_id>/inscriptos', methods=['GET'])
 @jwt_required()
 @require_rol('administrador', 'empleado')
 def get_inscriptos(clase_id):
-    now = datetime.utcnow()
-    reservas = Reserva.query.filter_by(
-        clase_id=clase_id,
-        estado='activa',
-        mes=now.month,
-        anio=now.year
-    ).all()
+    reservas = Reserva.query.filter_by(clase_id=clase_id, estado='activa').all()
     result = []
     for r in reservas:
         d = r.to_dict()

@@ -41,22 +41,21 @@ def create_app():
 
 
 def seed_data(app):
-    """Datos iniciales para desarrollo"""
     with app.app_context():
-        from models import Usuario, Actividad
+        from models import Usuario, Actividad, Clase
+        from datetime import date, time, timedelta
+
         if Usuario.query.first():
             return
-        # Admin
+
+        # Usuarios
         admin = Usuario(nombre='Admin', apellido='Club360', dni='00000000', email='admin@club360.com', rol='administrador')
         admin.set_password('admin123')
-        # Empleado
         emp = Usuario(nombre='Carlos', apellido='Gómez', dni='11111111', email='empleado@club360.com', rol='empleado')
         emp.set_password('emp123')
-        # Cliente demo
         cli = Usuario(nombre='Juan', apellido='Pérez', dni='22222222', email='cliente@club360.com', rol='cliente')
         cli.set_password('cliente123')
 
-        # Actividades
         actividades = [
             Actividad(nombre='Fútbol', descripcion='Fútbol 5 en cancha de césped sintético', precio_clase=2500),
             Actividad(nombre='Pádel', descripcion='Pádel en cancha cubierta', precio_clase=3000),
@@ -66,16 +65,26 @@ def seed_data(app):
         db.session.add_all([admin, emp, cli] + actividades)
         db.session.commit()
 
-        # Clases demo
-        from models import Clase
-        from datetime import time
+        # Clases con fechas a partir de hoy
+        hoy = date.today()
+        # Buscar los próximos días de la semana para armar clases de ejemplo
+        def proximo_dia(dia_semana, desde=hoy, offset_semanas=0):
+            """Retorna la próxima fecha para un día de semana (0=lun..6=dom)"""
+            dias_hasta = (dia_semana - desde.weekday()) % 7
+            return desde + timedelta(days=dias_hasta + offset_semanas * 7)
+
         clases_demo = [
-            Clase(actividad_id=1, dia_semana='lunes', hora_inicio=time(8, 0), cupo_maximo=10),
-            Clase(actividad_id=1, dia_semana='miercoles', hora_inicio=time(10, 0), cupo_maximo=10),
-            Clase(actividad_id=2, dia_semana='martes', hora_inicio=time(9, 0), cupo_maximo=8),
-            Clase(actividad_id=2, dia_semana='jueves', hora_inicio=time(18, 0), cupo_maximo=8),
-            Clase(actividad_id=3, dia_semana='viernes', hora_inicio=time(20, 0), cupo_maximo=12),
-            Clase(actividad_id=4, dia_semana='sabado', hora_inicio=time(10, 0), cupo_maximo=12),
+            # Fútbol - lunes y miércoles
+            Clase(actividad_id=1, fecha=proximo_dia(0), hora_inicio=time(8, 0), cupo_maximo=10),
+            Clase(actividad_id=1, fecha=proximo_dia(2), hora_inicio=time(10, 0), cupo_maximo=10),
+            Clase(actividad_id=1, fecha=proximo_dia(0, offset_semanas=1), hora_inicio=time(8, 0), cupo_maximo=10),
+            # Pádel - martes y jueves
+            Clase(actividad_id=2, fecha=proximo_dia(1), hora_inicio=time(9, 0), cupo_maximo=8),
+            Clase(actividad_id=2, fecha=proximo_dia(3), hora_inicio=time(18, 0), cupo_maximo=8),
+            # Básquet - viernes
+            Clase(actividad_id=3, fecha=proximo_dia(4), hora_inicio=time(20, 0), cupo_maximo=12),
+            # Vóley - sábado
+            Clase(actividad_id=4, fecha=proximo_dia(5), hora_inicio=time(10, 0), cupo_maximo=12),
         ]
         db.session.add_all(clases_demo)
         db.session.commit()

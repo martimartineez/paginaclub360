@@ -4,6 +4,8 @@ import bcrypt
 
 db = SQLAlchemy()
 
+DIAS_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
 class Usuario(db.Model):
     __tablename__ = 'usuarios'
     id = db.Column(db.Integer, primary_key=True)
@@ -62,9 +64,10 @@ class Clase(db.Model):
     __tablename__ = 'clases'
     id = db.Column(db.Integer, primary_key=True)
     actividad_id = db.Column(db.Integer, db.ForeignKey('actividades.id'), nullable=False)
-    dia_semana = db.Column(db.Enum('lunes','martes','miercoles','jueves','viernes','sabado', name='dia_enum'), nullable=False)
+    fecha = db.Column(db.Date, nullable=False)           # fecha exacta de la clase
     hora_inicio = db.Column(db.Time, nullable=False)
     cupo_maximo = db.Column(db.Integer, nullable=False)
+    cancelada = db.Column(db.Boolean, default=False)     # cancelada por admin para este dia
     activa = db.Column(db.Boolean, default=True)
 
     reservas = db.relationship('Reserva', backref='clase', lazy=True)
@@ -77,16 +80,23 @@ class Clase(db.Model):
         ).count()
         return self.cupo_maximo - reservas_activas
 
+    def dia_semana_str(self):
+        if self.fecha:
+            return DIAS_ES[self.fecha.weekday()]
+        return ''
+
     def to_dict(self):
         return {
             'id': self.id,
             'actividad_id': self.actividad_id,
             'actividad': self.actividad.nombre if self.actividad else None,
             'precio_clase': float(self.actividad.precio_clase) if self.actividad else 0,
-            'dia_semana': self.dia_semana,
+            'fecha': self.fecha.isoformat() if self.fecha else None,
+            'dia_semana': self.dia_semana_str(),
             'hora_inicio': self.hora_inicio.strftime('%H:%M') if self.hora_inicio else None,
             'cupo_maximo': self.cupo_maximo,
             'cupos_disponibles': self.cupos_disponibles(),
+            'cancelada': self.cancelada,
             'activa': self.activa
         }
 
