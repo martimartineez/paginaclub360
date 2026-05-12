@@ -1,9 +1,9 @@
-# Python
+# back
 **/__pycache__/
 *.pyc
 admin/venv/
 
-# Node / Vue
+# front
 portal/node_modules/
 portal/dist/
 portal/.navel
