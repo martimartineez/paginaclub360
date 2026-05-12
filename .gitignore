@@ -1,16 +1,14 @@
-# back
+# Python / Backend
+**/venv/
 **/__pycache__/
 *.pyc
-admin/venv/
+.env
 
-# front
-portal/node_modules/
-portal/dist/
-portal/.navel
+# Frontend
+**/node_modules/
+**/dist/
 
-# IDEs
+# IDEs y SO
 .vscode/
 .idea/
-
-# Environment Variables (Seguridad)
-.env
+.DS_Store
