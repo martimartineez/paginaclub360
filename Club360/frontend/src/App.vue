@@ -8,8 +8,8 @@
         </router-link>
 
         <div class="nav-links">
-          <router-link to="/clases" class="nav-link">Clases</router-link>
           <template v-if="auth.isAuthenticated">
+            <router-link to="/clases" class="nav-link">Ver Clases Disponibles</router-link>
             <router-link to="/mis-reservas" class="nav-link">Mis Reservas</router-link>
             <template v-if="auth.isAdmin || auth.isEmpleado">
               <router-link to="/admin/usuarios" class="nav-link">Usuarios</router-link>

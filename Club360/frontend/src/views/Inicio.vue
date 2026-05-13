@@ -5,7 +5,9 @@
         <h1>CLUB <span class="gradient-text">360</span></h1>
         <p class="hero-subtitle">Tu centro deportivo en Buenos Aires. Fútbol, Pádel, Básquet y Vóley.</p>
         <div class="hero-actions">
-          <router-link to="/clases" class="btn btn-primary">Ver Clases Disponibles</router-link>
+          <template v-if="auth.isAuthenticated">
+            <router-link to="/clases" class="btn btn-primary">Ver Clases Disponibles</router-link>
+          </template>
           <router-link to="/registro" class="btn btn-outline" v-if="!auth.isAuthenticated">Registrarse Gratis</router-link>
         </div>
       </div>
