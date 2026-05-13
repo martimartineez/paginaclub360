@@ -5,12 +5,17 @@
         <h2>GESTIÓN DE USUARIOS</h2>
         <p>Ver y administrar clientes y empleados</p>
       </div>
-      <button class="btn btn-primary" v-if="auth.isAdmin" @click="modalRegistrar = true">+ Nuevo Empleado</button>
+      <div style="display:flex;gap:10px">
+        <!-- Tanto admin como empleado pueden cargar clientes -->
+        <button class="btn btn-primary" @click="abrirRegistro('cliente')">+ Nuevo Cliente</button>
+        <!-- Solo admin puede cargar empleados -->
+        <button class="btn btn-secondary" v-if="auth.isAdmin" @click="abrirRegistro('empleado')">+ Nuevo Empleado</button>
+      </div>
     </div>
 
     <div class="card filters-bar" style="margin-bottom:24px">
-      <div style="display:flex;gap:12px">
-        <div class="input-group" style="margin:0;flex:1">
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div class="input-group" style="margin:0;flex:1;min-width:200px">
           <input v-model="busqueda" placeholder="Buscar por nombre, apellido, DNI o email..." @input="fetchUsuarios" />
         </div>
         <div class="input-group" style="margin:0">
@@ -24,6 +29,7 @@
       </div>
     </div>
 
+    <div class="alert alert-success" v-if="regMsg">{{ regMsg }}</div>
     <div class="alert alert-error" v-if="error">{{ error }}</div>
 
     <div class="card" style="overflow:auto">
@@ -34,65 +40,79 @@
         <tbody>
           <tr v-for="u in usuarios" :key="u.id">
             <td>{{ u.nombre }} {{ u.apellido }}</td>
-            <td>{{ u.dni }}</td>
-            <td>{{ u.email }}</td>
+            <td style="color:var(--text-muted)">{{ u.dni }}</td>
+            <td style="color:var(--text-muted);font-size:13px">{{ u.email }}</td>
             <td><span class="badge" :class="rolBadge(u.rol)">{{ u.rol }}</span></td>
             <td>
-              <span v-if="u.suspensiones_activas?.length" class="badge badge-red">{{ u.suspensiones_activas.length }} activa(s)</span>
+              <span v-if="u.suspensiones_activas?.length" class="badge badge-red">
+                {{ u.suspensiones_activas.length }} activa(s)
+              </span>
               <span v-else class="badge badge-green">OK</span>
             </td>
             <td>
-              <button class="btn btn-outline btn-sm" @click="verDetalle(u)">Ver detalle</button>
+              <router-link
+                v-if="u.rol === 'cliente'"
+                :to="`/usuarios/${u.id}`"
+                class="btn btn-primary btn-sm"
+              >
+                👤 Ver detalle
+              </router-link>
+              <button v-else class="btn btn-outline btn-sm" @click="verDetalleSimple(u)">
+                Ver info
+              </button>
             </td>
           </tr>
         </tbody>
       </table>
+      <p v-if="usuarios.length === 0" style="text-align:center;padding:32px;color:var(--text-muted)">
+        No se encontraron usuarios.
+      </p>
     </div>
 
-    <!-- Modal detalle usuario -->
-    <div class="modal-overlay" v-if="detalleModal" @click.self="detalleModal = null">
-      <div class="modal card" style="max-width:560px">
+    <!-- Modal info simple (empleados/admins) -->
+    <div class="modal-overlay" v-if="detalleSimple" @click.self="detalleSimple = null">
+      <div class="modal card">
         <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px">
-          <div class="avatar-lg">{{ detalleModal.nombre?.charAt(0) }}</div>
+          <div class="avatar-lg">{{ detalleSimple.nombre?.charAt(0) }}</div>
           <div>
-            <h3>{{ detalleModal.nombre }} {{ detalleModal.apellido }}</h3>
-            <p style="color:var(--text-muted);font-size:14px">{{ detalleModal.email }}</p>
-            <span class="badge" :class="rolBadge(detalleModal.rol)">{{ detalleModal.rol }}</span>
+            <h3>{{ detalleSimple.nombre }} {{ detalleSimple.apellido }}</h3>
+            <p style="color:var(--text-muted);font-size:14px">{{ detalleSimple.email }}</p>
+            <span class="badge" :class="rolBadge(detalleSimple.rol)">{{ detalleSimple.rol }}</span>
           </div>
         </div>
-        <div class="grid-2" style="margin-bottom:16px">
-          <div class="detalle-item"><span class="label">DNI</span><span>{{ detalleModal.dni }}</span></div>
-          <div class="detalle-item"><span class="label">Miembro desde</span><span>{{ new Date(detalleModal.fecha_registro).toLocaleDateString() }}</span></div>
+        <div class="grid-2">
+          <div class="detalle-item"><span class="label">DNI</span><span>{{ detalleSimple.dni }}</span></div>
+          <div class="detalle-item"><span class="label">Miembro desde</span><span>{{ new Date(detalleSimple.fecha_registro).toLocaleDateString() }}</span></div>
         </div>
-        <div v-if="detalleModal.suspensiones_activas?.length">
-          <h4 style="margin-bottom:12px;color:var(--danger)">⚠️ Suspensiones activas</h4>
-          <div v-for="s in detalleModal.suspensiones_activas" :key="s.id" class="suspension-item">
-            <span class="badge badge-red">{{ s.tipo }}</span>
-            <span style="font-size:13px">{{ s.motivo }}</span>
-            <span style="color:var(--warning);font-weight:600">Deuda: ${{ s.monto_deuda?.toLocaleString() }}</span>
-          </div>
-        </div>
-        <button class="btn btn-outline btn-sm" style="margin-top:16px" @click="detalleModal = null">Cerrar</button>
+        <button class="btn btn-outline btn-sm" style="margin-top:16px" @click="detalleSimple = null">Cerrar</button>
       </div>
     </div>
 
-    <!-- Modal registrar empleado -->
-    <div class="modal-overlay" v-if="modalRegistrar" @click.self="modalRegistrar = false">
+    <!-- Modal registrar usuario (cliente o empleado) -->
+    <div class="modal-overlay" v-if="modalRegistrar" @click.self="cerrarModal">
       <div class="modal card">
-        <h3>Registrar Empleado</h3>
+        <h3>
+          {{ rolRegistrando === 'cliente' ? '👤 Registrar Cliente' : '🧑‍💼 Registrar Empleado' }}
+        </h3>
         <div class="alert alert-error" v-if="regError">{{ regError }}</div>
         <div class="grid-2">
           <div class="input-group"><label>Nombre</label><input v-model="regForm.nombre" /></div>
           <div class="input-group"><label>Apellido</label><input v-model="regForm.apellido" /></div>
         </div>
-        <div class="input-group"><label>DNI</label><input v-model="regForm.dni" /></div>
+        <div class="input-group"><label>DNI</label><input v-model="regForm.dni" placeholder="Sin puntos ni guiones" /></div>
         <div class="input-group"><label>Email</label><input v-model="regForm.email" type="email" /></div>
-        <div class="input-group"><label>Contraseña</label><input v-model="regForm.password" type="password" /></div>
+        <div class="input-group">
+          <label>Contraseña inicial</label>
+          <input v-model="regForm.password" type="password" placeholder="Mínimo 6 caracteres" />
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+          El usuario podrá cambiar su contraseña desde su perfil.
+        </p>
         <div style="display:flex;gap:10px">
-          <button class="btn btn-primary" @click="registrarEmpleado" :disabled="regLoading">
-            {{ regLoading ? 'Registrando...' : 'Registrar' }}
+          <button class="btn btn-primary" @click="registrarUsuario" :disabled="regLoading">
+            {{ regLoading ? 'Registrando...' : `Registrar ${rolRegistrando}` }}
           </button>
-          <button class="btn btn-outline" @click="modalRegistrar = false">Cancelar</button>
+          <button class="btn btn-outline" @click="cerrarModal">Cancelar</button>
         </div>
       </div>
     </div>
@@ -109,13 +129,30 @@ const usuarios = ref([])
 const busqueda = ref('')
 const filtroRol = ref('')
 const error = ref('')
-const detalleModal = ref(null)
+const regMsg = ref('')
+const detalleSimple = ref(null)
 const modalRegistrar = ref(false)
-const regForm = ref({ nombre:'', apellido:'', dni:'', email:'', password:'', rol:'empleado' })
-const regError = ref(''), regLoading = ref(false)
+const rolRegistrando = ref('cliente')
+const regForm = ref({ nombre: '', apellido: '', dni: '', email: '', password: '' })
+const regError = ref('')
+const regLoading = ref(false)
 
 function rolBadge(rol) {
-  return { 'administrador':'badge-green', 'empleado':'badge-blue', 'cliente':'badge-yellow' }[rol] || 'badge-yellow'
+  return { 'administrador': 'badge-green', 'empleado': 'badge-blue', 'cliente': 'badge-yellow' }[rol] || 'badge-yellow'
+}
+
+function verDetalleSimple(u) { detalleSimple.value = u }
+
+function abrirRegistro(rol) {
+  rolRegistrando.value = rol
+  regForm.value = { nombre: '', apellido: '', dni: '', email: '', password: '' }
+  regError.value = ''
+  modalRegistrar.value = true
+}
+
+function cerrarModal() {
+  modalRegistrar.value = false
+  regError.value = ''
 }
 
 async function fetchUsuarios() {
@@ -126,18 +163,19 @@ async function fetchUsuarios() {
   usuarios.value = data
 }
 
-async function verDetalle(u) {
-  const { data } = await api.get(`/usuarios/${u.id}`)
-  detalleModal.value = data
-}
-
-async function registrarEmpleado() {
+async function registrarUsuario() {
+  if (!regForm.value.nombre || !regForm.value.dni || !regForm.value.email || !regForm.value.password) {
+    regError.value = 'Completá todos los campos'
+    return
+  }
   regLoading.value = true
   regError.value = ''
   try {
-    await api.post('/auth/register', regForm.value)
-    modalRegistrar.value = false
+    await api.post('/auth/register', { ...regForm.value, rol: rolRegistrando.value })
+    regMsg.value = `${rolRegistrando.value === 'cliente' ? 'Cliente' : 'Empleado'} registrado correctamente`
+    cerrarModal()
     fetchUsuarios()
+    setTimeout(() => regMsg.value = '', 3000)
   } catch (e) {
     regError.value = e.response?.data?.error || 'Error al registrar'
   } finally {
@@ -150,17 +188,16 @@ onMounted(fetchUsuarios)
 
 <style scoped>
 .filters-bar { padding: 16px 24px; }
-.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:200; }
-.modal { max-width:480px; width:100%; }
-.modal h3 { font-size:22px; margin-bottom:20px; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }
+.modal { max-width: 480px; width: 100%; }
+.modal h3 { font-size: 22px; margin-bottom: 20px; }
 .avatar-lg {
-  width: 56px; height: 56px;
+  width: 52px; height: 52px;
   background: linear-gradient(135deg, var(--verde), var(--azul));
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 700; flex-shrink: 0;
+  font-size: 20px; font-weight: 700; flex-shrink: 0;
 }
-.detalle-item { display:flex; flex-direction:column; gap:4px; }
-.label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; }
-.suspension-item { display:flex; align-items:center; gap:10px; padding:10px; background:var(--dark-3); border-radius:6px; margin-bottom:8px; font-size:14px; }
+.detalle-item { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 </style>

@@ -6,12 +6,14 @@ const routes = [
   { path: '/login', component: () => import('../views/Login.vue') },
   { path: '/registro', component: () => import('../views/Registro.vue') },
   { path: '/clases', component: () => import('../views/Clases.vue') },
+  { path: '/clases/:id', component: () => import('../views/DetalleClase.vue') },
   { path: '/mis-reservas', component: () => import('../views/MisReservas.vue'), meta: { requiresAuth: true } },
   { path: '/perfil', component: () => import('../views/Perfil.vue'), meta: { requiresAuth: true } },
   // Admin
   { path: '/admin/clases', component: () => import('../views/admin/GestionClases.vue'), meta: { requiresAuth: true, roles: ['administrador'] } },
   { path: '/admin/usuarios', component: () => import('../views/admin/GestionUsuarios.vue'), meta: { requiresAuth: true, roles: ['administrador', 'empleado'] } },
   { path: '/admin/actividades', component: () => import('../views/admin/GestionActividades.vue'), meta: { requiresAuth: true, roles: ['administrador'] } },
+  { path: '/usuarios/:id', component: () => import('../views/admin/DetalleUsuario.vue'), meta: { requiresAuth: true, roles: ['administrador', 'empleado'] } },
   // Empleado
   { path: '/empleado/asistencia', component: () => import('../views/empleado/RegistroAsistencia.vue'), meta: { requiresAuth: true, roles: ['empleado', 'administrador'] } },
   { path: '/empleado/suspensiones', component: () => import('../views/empleado/Suspensiones.vue'), meta: { requiresAuth: true, roles: ['empleado', 'administrador'] } },

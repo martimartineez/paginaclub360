@@ -21,7 +21,7 @@
         <div class="reserva-header">
           <span class="sport-emoji">{{ sportEmoji(r.clase?.actividad) }}</span>
           <div class="reserva-info">
-            <h3>{{ r.clase?.actividad }}</h3>
+            <router-link :to="`/clases/${r.clase_id}`" style="text-decoration:none"><h3 style="color:inherit">{{ r.clase?.actividad }}</h3></router-link>
             <p>{{ r.clase?.dia_semana }} — {{ r.clase?.hora_inicio }} hs</p>
           </div>
           <div class="reserva-badges">
