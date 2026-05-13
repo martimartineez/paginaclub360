@@ -232,3 +232,26 @@ class Suspension(db.Model):
             'activa': self.activa,
             'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None
         }
+
+
+class TarjetaCredito(db.Model):
+    __tablename__ = 'tarjetas_credito'
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    ultimos_4 = db.Column(db.String(4), nullable=False)
+    titular = db.Column(db.String(150), nullable=False)
+    vencimiento = db.Column(db.String(7), nullable=False)  # MM/AAAA
+    activa = db.Column(db.Boolean, default=True)
+    fecha_agregada = db.Column(db.DateTime, default=datetime.utcnow)
+
+    usuario = db.relationship('Usuario', backref='tarjetas')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'usuario_id': self.usuario_id,
+            'ultimos_4': self.ultimos_4,
+            'titular': self.titular,
+            'vencimiento': self.vencimiento,
+            'activa': self.activa
+        }

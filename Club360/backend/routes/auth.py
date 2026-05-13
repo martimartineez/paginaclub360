@@ -94,3 +94,51 @@ def change_password():
     user.set_password(nueva)
     db.session.commit()
     return jsonify({'mensaje': 'Contraseña actualizada'}), 200
+
+
+@auth_bp.route('/tarjetas', methods=['GET'])
+@jwt_required()
+def get_tarjetas():
+    user_id = get_jwt_identity()
+    from models import TarjetaCredito
+    tarjetas = TarjetaCredito.query.filter_by(usuario_id=int(user_id), activa=True).all()
+    return jsonify([t.to_dict() for t in tarjetas]), 200
+
+
+@auth_bp.route('/tarjetas', methods=['POST'])
+@jwt_required()
+def agregar_tarjeta():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    from models import TarjetaCredito
+
+    numero = data.get('numero', '').replace(' ', '').replace('-', '')
+    if len(numero) < 13 or not numero.isdigit():
+        return jsonify({'error': 'Número de tarjeta inválido'}), 400
+
+    venc = data.get('vencimiento', '')
+    if len(venc) != 5 or venc[2] != '/':
+        return jsonify({'error': 'Vencimiento inválido (MM/AA)'}), 400
+
+    tarjeta = TarjetaCredito(
+        usuario_id=int(user_id),
+        ultimos_4=numero[-4:],
+        titular=data.get('titular', '').upper(),
+        vencimiento=venc,
+    )
+    db.session.add(tarjeta)
+    db.session.commit()
+    return jsonify({'tarjeta': tarjeta.to_dict(), 'mensaje': 'Tarjeta agregada'}), 201
+
+
+@auth_bp.route('/tarjetas/<int:tid>', methods=['DELETE'])
+@jwt_required()
+def eliminar_tarjeta(tid):
+    user_id = get_jwt_identity()
+    from models import TarjetaCredito
+    t = TarjetaCredito.query.get_or_404(tid)
+    if t.usuario_id != int(user_id):
+        return jsonify({'error': 'Sin permisos'}), 403
+    t.activa = False
+    db.session.commit()
+    return jsonify({'mensaje': 'Tarjeta eliminada'}), 200

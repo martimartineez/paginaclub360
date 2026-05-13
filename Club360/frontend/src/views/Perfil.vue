@@ -6,37 +6,75 @@
 
     <div class="perfil-layout">
       <!-- Datos personales -->
-      <div class="card">
-        <h3>Datos personales</h3>
-        <div class="alert alert-success" v-if="msg">{{ msg }}</div>
-        <div class="alert alert-error" v-if="err">{{ err }}</div>
-        <div class="input-group">
-          <label>Nombre</label>
-          <input v-model="form.nombre" />
+      <div>
+        <div class="card" style="margin-bottom:20px">
+          <h3>Datos personales</h3>
+          <div class="alert alert-success" v-if="msg">{{ msg }}</div>
+          <div class="alert alert-error" v-if="err">{{ err }}</div>
+          <div class="input-group">
+            <label>Nombre</label>
+            <input v-model="form.nombre" />
+          </div>
+          <div class="input-group">
+            <label>Apellido</label>
+            <input v-model="form.apellido" />
+          </div>
+          <div class="input-group">
+            <label>Email</label>
+            <input v-model="form.email" type="email" />
+          </div>
+          <div class="input-group">
+            <label>DNI</label>
+            <input :value="auth.user?.dni" disabled style="opacity:0.4" />
+          </div>
+          <div class="input-group">
+            <label>Rol</label>
+            <input :value="auth.user?.rol" disabled style="opacity:0.4;text-transform:capitalize" />
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" @click="guardar" :disabled="guardando">
+              {{ guardando ? 'Guardando...' : 'Guardar cambios' }}
+            </button>
+            <button class="btn btn-outline" @click="modalPass = true">
+              🔑 Cambiar contraseña
+            </button>
+          </div>
         </div>
-        <div class="input-group">
-          <label>Apellido</label>
-          <input v-model="form.apellido" />
-        </div>
-        <div class="input-group">
-          <label>Email</label>
-          <input v-model="form.email" type="email" />
-        </div>
-        <div class="input-group">
-          <label>DNI</label>
-          <input :value="auth.user?.dni" disabled style="opacity:0.4" />
-        </div>
-        <div class="input-group">
-          <label>Rol</label>
-          <input :value="auth.user?.rol" disabled style="opacity:0.4;text-transform:capitalize" />
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" @click="guardar" :disabled="guardando">
-            {{ guardando ? 'Guardando...' : 'Guardar cambios' }}
-          </button>
-          <button class="btn btn-outline" @click="modalPass = true">
-            🔑 Cambiar contraseña
-          </button>
+
+        <!-- Sección tarjetas (solo clientes) -->
+        <div class="card" v-if="auth.isCliente">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <h3>💳 Mis tarjetas de crédito</h3>
+            <button class="btn btn-outline btn-sm" @click="mostrarFormTarjeta = !mostrarFormTarjeta">
+              {{ mostrarFormTarjeta ? 'Cancelar' : '+ Agregar tarjeta' }}
+            </button>
+          </div>
+
+          <!-- Tarjetas existentes -->
+          <div v-if="tarjetas.length === 0 && !mostrarFormTarjeta" class="empty-tarjetas">
+            <p>No tenés tarjetas registradas.</p>
+            <p style="font-size:12px">Agregá una para poder pagar clases online.</p>
+          </div>
+
+          <div v-for="t in tarjetas" :key="t.id" class="tarjeta-item">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-size:24px">💳</span>
+              <div>
+                <p style="font-weight:600">•••• •••• •••• {{ t.ultimos_4 }}</p>
+                <p style="font-size:12px;color:var(--text-muted)">{{ t.titular }} · Vence {{ t.vencimiento }}</p>
+              </div>
+            </div>
+            <button class="btn btn-danger btn-sm" @click="eliminarTarjeta(t.id)">Eliminar</button>
+          </div>
+
+          <!-- Formulario nueva tarjeta -->
+          <div v-if="mostrarFormTarjeta" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+            <FormTarjeta
+              label-boton="Guardar tarjeta"
+              @guardada="onTarjetaGuardada"
+              @cancelar="mostrarFormTarjeta = false"
+            />
+          </div>
         </div>
       </div>
 
@@ -51,6 +89,10 @@
             <span class="label">DNI</span>
             <span>{{ auth.user?.dni }}</span>
           </div>
+          <div class="info-row" v-if="auth.isCliente">
+            <span class="label">Tarjetas</span>
+            <span>{{ tarjetas.length }} registrada(s)</span>
+          </div>
         </div>
       </div>
     </div>
@@ -59,10 +101,8 @@
     <div class="modal-overlay" v-if="modalPass" @click.self="cerrarModalPass">
       <div class="modal card">
         <h3>🔑 Cambiar contraseña</h3>
-
         <div class="alert alert-success" v-if="passMsg">{{ passMsg }}</div>
         <div class="alert alert-error" v-if="passErr">{{ passErr }}</div>
-
         <div class="input-group">
           <label>Contraseña actual</label>
           <div class="input-eye">
@@ -87,13 +127,10 @@
             ⚠️ Las contraseñas no coinciden
           </p>
         </div>
-
-        <!-- Indicador de fortaleza -->
         <div v-if="passForm.nueva_password" class="strength-bar-wrap">
           <div class="strength-bar" :style="{ width: fortaleza.pct + '%', background: fortaleza.color }"></div>
           <span class="strength-label" :style="{ color: fortaleza.color }">{{ fortaleza.label }}</span>
         </div>
-
         <div style="display:flex;gap:10px;margin-top:8px">
           <button
             class="btn btn-primary"
@@ -112,6 +149,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth.js'
+import FormTarjeta from '../components/FormTarjeta.vue'
 import api from '../api.js'
 
 const auth = useAuthStore()
@@ -123,9 +161,10 @@ const modalPass = ref(false)
 const passForm = ref({ password_actual: '', nueva_password: '', confirmar: '' })
 const passMsg = ref(''), passErr = ref('')
 const cambiando = ref(false)
-const verActual = ref(false)
-const verNueva = ref(false)
-const verConfirmar = ref(false)
+const verActual = ref(false), verNueva = ref(false), verConfirmar = ref(false)
+
+const tarjetas = ref([])
+const mostrarFormTarjeta = ref(false)
 
 const rolBadge = computed(() => ({
   'badge-green': auth.user?.rol === 'administrador',
@@ -152,87 +191,80 @@ const fortaleza = computed(() => {
   return map[score - 1] || map[0]
 })
 
-onMounted(() => {
-  form.value = {
-    nombre: auth.user?.nombre || '',
-    apellido: auth.user?.apellido || '',
-    email: auth.user?.email || ''
-  }
+onMounted(async () => {
+  form.value = { nombre: auth.user?.nombre || '', apellido: auth.user?.apellido || '', email: auth.user?.email || '' }
+  if (auth.isCliente) fetchTarjetas()
 })
 
+async function fetchTarjetas() {
+  try {
+    const { data } = await api.get('/auth/tarjetas')
+    tarjetas.value = data
+  } catch {}
+}
+
 async function guardar() {
-  guardando.value = true
-  err.value = ''
+  guardando.value = true; err.value = ''
   try {
     await api.put(`/usuarios/${auth.user.id}`, form.value)
     await auth.refreshUser()
     msg.value = 'Perfil actualizado correctamente'
-  } catch (e) {
-    err.value = e.response?.data?.error || 'Error al guardar'
-  } finally {
-    guardando.value = false
-  }
+  } catch (e) { err.value = e.response?.data?.error || 'Error al guardar' }
+  finally { guardando.value = false }
 }
 
 async function cambiarPass() {
   if (passForm.value.nueva_password !== passForm.value.confirmar) return
-  cambiando.value = true
-  passErr.value = ''
+  cambiando.value = true; passErr.value = ''
   try {
-    await api.put('/auth/change-password', {
-      password_actual: passForm.value.password_actual,
-      nueva_password: passForm.value.nueva_password
-    })
+    await api.put('/auth/change-password', { password_actual: passForm.value.password_actual, nueva_password: passForm.value.nueva_password })
     passMsg.value = '✅ Contraseña cambiada correctamente'
     passForm.value = { password_actual: '', nueva_password: '', confirmar: '' }
     setTimeout(() => { modalPass.value = false; passMsg.value = '' }, 1500)
-  } catch (e) {
-    passErr.value = e.response?.data?.error || 'Error al cambiar contraseña'
-  } finally {
-    cambiando.value = false
-  }
+  } catch (e) { passErr.value = e.response?.data?.error || 'Error al cambiar contraseña' }
+  finally { cambiando.value = false }
 }
 
 function cerrarModalPass() {
   modalPass.value = false
   passForm.value = { password_actual: '', nueva_password: '', confirmar: '' }
-  passMsg.value = ''
-  passErr.value = ''
+  passMsg.value = ''; passErr.value = ''
+}
+
+function onTarjetaGuardada(tarjeta) {
+  tarjetas.value.push(tarjeta)
+  mostrarFormTarjeta.value = false
+}
+
+async function eliminarTarjeta(id) {
+  await api.delete(`/auth/tarjetas/${id}`)
+  tarjetas.value = tarjetas.value.filter(t => t.id !== id)
 }
 </script>
 
 <style scoped>
-.perfil-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+.perfil-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: start; }
 .card h3 { font-size: 20px; margin-bottom: 20px; }
-.cuenta-info { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 32px 24px; }
-.avatar-perfil {
-  width: 72px; height: 72px;
-  background: linear-gradient(135deg, var(--verde), var(--azul));
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 28px; font-weight: 700;
-  margin-bottom: 4px;
-}
+.cuenta-info { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 32px 24px; position: sticky; top: 80px; }
+.avatar-perfil { width: 72px; height: 72px; background: linear-gradient(135deg, var(--verde), var(--azul)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; margin-bottom: 4px; }
 .cuenta-info h3 { font-size: 22px; margin: 0; }
 .email-text { color: var(--text-muted); font-size: 14px; }
 .info-extra { width: 100%; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
 .info-row { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; }
 .label { color: var(--text-muted); }
+/* Tarjetas */
+.empty-tarjetas { padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px; background: var(--dark-3); border-radius: 8px; }
+.tarjeta-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--dark-3); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); }
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { max-width: 440px; width: 100%; }
 .modal h3 { font-size: 22px; margin-bottom: 20px; }
 .input-eye { position: relative; }
 .input-eye input { width: 100%; padding-right: 40px; }
-.eye-btn {
-  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-  background: none; border: none; cursor: pointer; font-size: 16px; padding: 0;
-}
+.eye-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; padding: 0; }
 .mismatch-msg { font-size: 12px; color: var(--danger); margin-top: 4px; }
 .strength-bar-wrap { margin-bottom: 12px; }
 .strength-bar { height: 4px; border-radius: 2px; transition: all 0.3s; margin-bottom: 4px; }
 .strength-label { font-size: 12px; }
-@media (max-width: 768px) {
-  .perfil-layout { grid-template-columns: 1fr; }
-}
+@media (max-width: 768px) { .perfil-layout { grid-template-columns: 1fr; } }
 </style>

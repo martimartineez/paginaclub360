@@ -21,7 +21,7 @@ def require_rol(*roles):
 
 @clases_bp.route('/', methods=['GET'])
 def get_clases():
-    actividad_id = request.args.get('actividad_id')
+    actividad_id = request.args.get('actividad_id', type=int)
     desde = request.args.get('desde')   # fecha YYYY-MM-DD
     hasta = request.args.get('hasta')
     solo_activas = request.args.get('solo_activas', 'true') == 'true'
@@ -32,9 +32,11 @@ def get_clases():
     if actividad_id:
         query = query.filter_by(actividad_id=actividad_id)
     if desde:
-        query = query.filter(Clase.fecha >= desde)
+        fecha_desde = datetime.strptime(desde, '%Y-%m-%d').date()
+        query = query.filter(Clase.fecha >= fecha_desde)
     if hasta:
-        query = query.filter(Clase.fecha <= hasta)
+        fecha_hasta = datetime.strptime(hasta, '%Y-%m-%d').date()
+        query = query.filter(Clase.fecha <= fecha_hasta)
 
     clases = query.order_by(Clase.fecha, Clase.hora_inicio).all()
     return jsonify([c.to_dict() for c in clases]), 200
