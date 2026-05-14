@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Clase, Actividad, Reserva, ListaEspera, Usuario
-from datetime import datetime
+from datetime import datetime, date
+import calendar
 
 clases_bp = Blueprint('clases', __name__)
 
@@ -22,7 +23,7 @@ def require_rol(*roles):
 @clases_bp.route('/', methods=['GET'])
 def get_clases():
     actividad_id = request.args.get('actividad_id', type=int)
-    desde = request.args.get('desde')   # fecha YYYY-MM-DD
+    desde = request.args.get('desde')
     hasta = request.args.get('hasta')
     solo_activas = request.args.get('solo_activas', 'true') == 'true'
 
@@ -42,6 +43,156 @@ def get_clases():
     return jsonify([c.to_dict() for c in clases]), 200
 
 
+@clases_bp.route('/fechas-disponibles', methods=['GET'])
+def get_fechas_disponibles():
+    """Retorna fechas únicas disponibles para una actividad en un rango"""
+    actividad_id = request.args.get('actividad_id', type=int)
+    desde = request.args.get('desde')
+    hasta = request.args.get('hasta')
+
+    if not actividad_id:
+        return jsonify({'error': 'actividad_id requerido'}), 400
+
+    query = Clase.query.filter_by(activa=True, cancelada=False, actividad_id=actividad_id)
+    if desde:
+        query = query.filter(Clase.fecha >= datetime.strptime(desde, '%Y-%m-%d').date())
+    if hasta:
+        query = query.filter(Clase.fecha <= datetime.strptime(hasta, '%Y-%m-%d').date())
+
+    clases = query.order_by(Clase.fecha, Clase.hora_inicio).all()
+
+    # Agrupar por fecha
+    fechas = {}
+    for c in clases:
+        f = c.fecha.isoformat()
+        if f not in fechas:
+            fechas[f] = {
+                'fecha': f,
+                'dia_semana': c.dia_semana_str(),
+                'horarios': []
+            }
+        fechas[f]['horarios'].append({
+            'clase_id': c.id,
+            'hora_inicio': c.hora_inicio.strftime('%H:%M'),
+            'cupos_disponibles': c.cupos_disponibles(),
+            'cupo_maximo': c.cupo_maximo,
+            'precio_clase': float(c.actividad.precio_clase)
+        })
+
+    return jsonify(list(fechas.values())), 200
+
+
+@clases_bp.route('/horarios-disponibles', methods=['GET'])
+def get_horarios_disponibles():
+    """Para abonos: dado actividad_id, retorna combinaciones dia_semana+hora únicas con clases del mes"""
+    actividad_id = request.args.get('actividad_id', type=int)
+    if not actividad_id:
+        return jsonify({'error': 'actividad_id requerido'}), 400
+
+    hoy = date.today()
+    # Buscar clases del mes actual y siguiente para mostrar opciones
+    primer_dia_mes = date(hoy.year, hoy.month, 1)
+    ultimo_dia_mes = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
+
+    clases = Clase.query.filter_by(
+        activa=True, cancelada=False, actividad_id=actividad_id
+    ).filter(
+        Clase.fecha >= primer_dia_mes,
+        Clase.fecha <= ultimo_dia_mes
+    ).order_by(Clase.fecha, Clase.hora_inicio).all()
+
+    # Agrupar por (dia_semana_num, hora) para mostrar opciones únicas de abono
+    opciones = {}
+    for c in clases:
+        key = f"{c.fecha.weekday()}_{c.hora_inicio.strftime('%H:%M')}"
+        if key not in opciones:
+            opciones[key] = {
+                'dia_semana': c.dia_semana_str(),
+                'dia_semana_num': c.fecha.weekday(),
+                'hora_inicio': c.hora_inicio.strftime('%H:%M'),
+                'precio_clase': float(c.actividad.precio_clase),
+                'clases_mes': []
+            }
+        opciones[key]['clases_mes'].append({
+            'clase_id': c.id,
+            'fecha': c.fecha.isoformat(),
+            'cupos_disponibles': c.cupos_disponibles(),
+            'cancelada': c.cancelada
+        })
+
+    return jsonify(list(opciones.values())), 200
+
+
+@clases_bp.route('/detalle-abono', methods=['GET'])
+def get_detalle_abono():
+    """Dado actividad_id, dia_semana_num y hora_inicio, retorna todas las clases del mes y el precio del abono"""
+    actividad_id = request.args.get('actividad_id', type=int)
+    dia_semana_num = request.args.get('dia_semana_num', type=int)
+    hora_inicio = request.args.get('hora_inicio')  # HH:MM
+
+    if actividad_id is None or dia_semana_num is None or not hora_inicio:
+        return jsonify({'error': 'Parámetros requeridos: actividad_id, dia_semana_num, hora_inicio'}), 400
+
+    hoy = date.today()
+    primer_dia_mes = date(hoy.year, hoy.month, 1)
+    ultimo_dia_mes = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
+
+    hora_obj = datetime.strptime(hora_inicio, '%H:%M').time()
+
+    clases_mes = Clase.query.filter_by(
+        activa=True,
+        actividad_id=actividad_id,
+        hora_inicio=hora_obj
+    ).filter(
+        Clase.fecha >= primer_dia_mes,
+        Clase.fecha <= ultimo_dia_mes
+    ).order_by(Clase.fecha).all()
+
+    # Filtrar por día de semana
+    clases_mes = [c for c in clases_mes if c.fecha.weekday() == dia_semana_num]
+
+    actividad = Actividad.query.get(actividad_id)
+    precio_unitario = float(actividad.precio_clase) if actividad else 0
+
+    # Clases disponibles (con cupo, no canceladas)
+    clases_disponibles = [c for c in clases_mes if not c.cancelada and c.cupos_disponibles() > 0]
+    total_clases_mes = len(clases_mes)
+    total_disponibles = len(clases_disponibles)
+
+    # Lógica de precio: mitad de mes con más de 1 clase disponible → 50% descuento por clase
+    es_mitad_de_mes = hoy.day > 1 and hoy != primer_dia_mes
+    aplicar_descuento = es_mitad_de_mes and total_disponibles > 1
+    precio_por_clase = precio_unitario * 0.5 if aplicar_descuento else precio_unitario
+    monto_total = precio_por_clase * total_disponibles
+
+    detalle_clases = []
+    for c in clases_mes:
+        disponible = not c.cancelada and c.cupos_disponibles() > 0
+        detalle_clases.append({
+            'clase_id': c.id,
+            'fecha': c.fecha.isoformat(),
+            'dia_semana': c.dia_semana_str(),
+            'hora_inicio': c.hora_inicio.strftime('%H:%M'),
+            'cupos_disponibles': c.cupos_disponibles(),
+            'cancelada': c.cancelada,
+            'incluida_en_abono': disponible,
+            'precio_clase': precio_por_clase if disponible else 0
+        })
+
+    return jsonify({
+        'actividad': actividad.nombre if actividad else '',
+        'dia_semana': clases_mes[0].dia_semana_str() if clases_mes else '',
+        'hora_inicio': hora_inicio,
+        'precio_unitario': precio_unitario,
+        'precio_por_clase': precio_por_clase,
+        'aplicar_descuento': aplicar_descuento,
+        'total_clases_mes': total_clases_mes,
+        'total_disponibles': total_disponibles,
+        'monto_total': monto_total,
+        'clases': detalle_clases
+    }), 200
+
+
 @clases_bp.route('/<int:clase_id>', methods=['GET'])
 def get_clase(clase_id):
     clase = Clase.query.get_or_404(clase_id)
@@ -53,7 +204,7 @@ def get_clase(clase_id):
 @require_rol('administrador')
 def create_clase():
     data = request.get_json()
-    fecha_str = data.get('fecha')  # YYYY-MM-DD
+    fecha_str = data.get('fecha')
     if not fecha_str:
         return jsonify({'error': 'La fecha es requerida'}), 400
     try:
@@ -78,7 +229,6 @@ def create_clase():
 def update_clase(clase_id):
     clase = Clase.query.get_or_404(clase_id)
     data = request.get_json()
-    # Solo se puede modificar el cupo
     if 'cupo_maximo' in data:
         nuevo_cupo = int(data['cupo_maximo'])
         inscriptos = Reserva.query.filter_by(clase_id=clase_id, estado='activa').count()
@@ -97,7 +247,6 @@ def cancelar_clase(clase_id):
     if clase.cancelada:
         return jsonify({'error': 'La clase ya está cancelada'}), 400
     clase.cancelada = True
-    # Liberar todas las reservas activas de esta clase
     reservas = Reserva.query.filter_by(clase_id=clase_id, estado='activa').all()
     for r in reservas:
         r.estado = 'cancelada'

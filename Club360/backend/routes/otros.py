@@ -120,10 +120,11 @@ def pagar_senia_empleado(uid, reserva_id):
 @jwt_required()
 @require_rol('administrador', 'empleado')
 def inscribir_cliente(uid):
-    """Empleado/admin inscribe a un cliente en una clase"""
+    """Empleado/admin inscribe a un cliente en una clase (siempre en efectivo)"""
     from routes.reservas import crear_reserva_interna
     data = request.get_json()
     data['usuario_id'] = uid
+    data['metodo_pago'] = 'efectivo'  # inscripción presencial siempre es efectivo
     return crear_reserva_interna(data, get_jwt_identity())
 
 

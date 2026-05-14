@@ -91,53 +91,168 @@
       <div class="grid-2" style="margin-bottom:16px">
         <div class="input-group" style="margin:0">
           <label>Actividad</label>
-          <select v-model="inscribirForm.actividad_id" @change="fetchClasesDisponibles">
+          <select v-model="inscribirForm.actividad_id" @change="onActividadChange">
             <option value="">Seleccioná una actividad</option>
             <option v-for="a in actividades" :key="a.id" :value="a.id">{{ a.nombre }}</option>
           </select>
         </div>
         <div class="input-group" style="margin:0">
           <label>Tipo de inscripción</label>
-          <select v-model="inscribirForm.tipo">
+          <select v-model="inscribirForm.tipo" @change="onTipoChange">
             <option value="abonado">Abonado (mensual)</option>
             <option value="no_abonado">Clase suelta</option>
           </select>
         </div>
       </div>
 
-      <div v-if="clasesDisponibles.length > 0">
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Seleccioná la clase:</p>
-        <div class="clases-lista">
-          <div
-            v-for="c in clasesDisponibles"
-            :key="c.id"
-            class="clase-opcion"
-            :class="{ 'selected': inscribirForm.clase_id === c.id, 'sin-cupo': c.cupos_disponibles === 0 }"
-            @click="inscribirForm.clase_id = c.id"
-          >
-            <div style="display:flex;align-items:center;gap:10px">
-              <span>{{ sportEmoji(c.actividad) }}</span>
-              <div>
-                <p style="font-weight:600;font-size:14px">{{ c.dia_semana }} {{ formatFecha(c.fecha) }}</p>
-                <p style="font-size:12px;color:var(--text-muted)">{{ c.hora_inicio }} hs — {{ c.cupos_disponibles }} cupos</p>
+      <!-- ABONADO: selector día → horario (igual que el flujo del cliente) -->
+      <template v-if="inscribirForm.tipo === 'abonado' && inscribirForm.actividad_id">
+        <div v-if="loadingHorariosAbono" style="color:var(--text-muted);font-size:13px;padding:12px 0">Buscando turnos...</div>
+        <div v-else-if="diasAbonoEmpl.length === 0" style="color:var(--text-muted);font-size:13px;padding:12px 0">No hay turnos disponibles este mes.</div>
+        <template v-else>
+          <!-- Paso 1: elegir día -->
+          <div v-if="!abonoDiaEmpl">
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Seleccioná el día:</p>
+            <div style="display:flex;flex-wrap:wrap;gap:10px">
+              <div
+                v-for="dia in diasAbonoEmpl" :key="dia.dia_semana_num"
+                class="dia-btn-empl"
+                @click="abonoDiaEmpl = dia; inscribirForm.abono_opcion = null"
+              >
+                <span style="font-size:15px;font-weight:600">{{ dia.dia_semana }}</span>
+                <span style="font-size:11px;color:var(--text-muted)">{{ dia.horarios.length }} horario(s)</span>
               </div>
             </div>
-            <span class="badge" :class="c.cupos_disponibles > 0 ? 'badge-green' : 'badge-yellow'">
-              {{ c.cupos_disponibles > 0 ? 'Con cupo' : 'Lista espera' }}
-            </span>
           </div>
-        </div>
-      </div>
 
-      <button
-        class="btn btn-primary"
-        style="margin-top:16px"
-        @click="inscribirCliente"
-        :disabled="!inscribirForm.clase_id || inscribiendo"
-      >
-        {{ inscribiendo ? 'Inscribiendo...' : 'Confirmar inscripción' }}
-      </button>
-      <button class="btn btn-outline" style="margin-top:16px;margin-left:10px" @click="tab = null">Cancelar</button>
+          <!-- Paso 2: elegir horario -->
+          <div v-else>
+            <div class="fecha-sel-banner-empl">
+              <span>📅 {{ abonoDiaEmpl.dia_semana }}</span>
+              <button class="btn btn-outline btn-sm" @click="abonoDiaEmpl = null; inscribirForm.abono_opcion = null">Cambiar día</button>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Seleccioná el horario:</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+              <div
+                v-for="op in abonoDiaEmpl.horarios" :key="op.hora_inicio"
+                class="horario-btn-empl"
+                :class="{ selected: inscribirForm.abono_opcion?.hora_inicio === op.hora_inicio }"
+                @click="elegirHorarioAbonoEmpl(op)"
+              >
+                <span style="font-weight:600;font-size:15px">{{ op.hora_inicio }}</span>
+                <span style="font-size:11px;color:var(--text-muted)">{{ op.clases_mes.filter(c=>c.cupos_disponibles>0).length }} con cupo</span>
+              </div>
+            </div>
+
+            <!-- Detalle del abono -->
+            <div v-if="loadingDetalleAbonoEmpl" style="color:var(--text-muted);font-size:13px">Calculando abono...</div>
+            <div v-else-if="detalleAbonoEmpl" style="margin-top:8px">
+              <p style="font-size:13px;font-weight:600;margin-bottom:8px">Clases del abono:</p>
+              <div class="abono-detalle-lista">
+                <div v-for="c in detalleAbonoEmpl.clases" :key="c.clase_id"
+                  class="abono-detalle-item"
+                  :class="{ incluida: c.incluida_en_abono, excluida: !c.incluida_en_abono }">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span>{{ c.incluida_en_abono ? '✓' : '✗' }}</span>
+                    <div>
+                      <p style="font-size:13px;font-weight:600">{{ c.dia_semana }} {{ formatFecha(c.fecha) }}</p>
+                      <p style="font-size:11px;color:var(--text-muted)">{{ c.hora_inicio }} hs</p>
+                    </div>
+                  </div>
+                  <span v-if="c.incluida_en_abono" style="font-size:13px;color:var(--verde-claro);font-weight:600">${{ c.precio_clase?.toLocaleString() }}</span>
+                  <span v-else style="font-size:11px;color:var(--danger)">{{ c.cancelada ? 'Cancelada' : 'Sin cupo' }}</span>
+                </div>
+              </div>
+              <div v-if="detalleAbonoEmpl.aplicar_descuento" class="alert alert-success" style="margin-top:10px;font-size:13px">
+                🎉 Mitad de mes con más de 1 clase: 50% de descuento por clase
+              </div>
+              <div class="abono-total-empl">
+                <span>Total abono ({{ detalleAbonoEmpl.total_disponibles }} clases)</span>
+                <span style="font-size:20px;font-weight:700;color:var(--verde-claro)">${{ detalleAbonoEmpl.monto_total?.toLocaleString() }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </template>
+
+      <!-- NO ABONADO: selector día → horario → clases de ese día/hora -->
+      <template v-if="inscribirForm.tipo === 'no_abonado' && inscribirForm.actividad_id">
+        <div v-if="loadingFechasEmpl" style="color:var(--text-muted);font-size:13px;padding:12px 0">Buscando fechas...</div>
+        <div v-else-if="diasSueltaEmpl.length === 0 && !sueltaDiaEmpl" style="color:var(--text-muted);font-size:13px;padding:12px 0">No hay clases disponibles.</div>
+        <template v-else>
+
+          <!-- Paso 1: elegir día -->
+          <div v-if="!sueltaDiaEmpl">
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Seleccioná el día:</p>
+            <div style="display:flex;flex-wrap:wrap;gap:10px">
+              <div
+                v-for="dia in diasSueltaEmpl" :key="dia.fecha"
+                class="dia-btn-empl"
+                @click="sueltaDiaEmpl = dia; inscribirForm.clase_id = null"
+              >
+                <span style="font-size:15px;font-weight:600">{{ dia.dia_semana }}</span>
+                <span style="font-size:13px;color:var(--verde-claro)">{{ formatFecha(dia.fecha) }}</span>
+                <span style="font-size:11px;color:var(--text-muted)">{{ dia.horarios.length }} horario(s)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Paso 2: elegir horario -->
+          <div v-else-if="!sueltaHorarioEmpl">
+            <div class="fecha-sel-banner-empl">
+              <span>📅 {{ sueltaDiaEmpl.dia_semana }} {{ formatFecha(sueltaDiaEmpl.fecha) }}</span>
+              <button class="btn btn-outline btn-sm" @click="sueltaDiaEmpl = null; sueltaHorarioEmpl = null; inscribirForm.clase_id = null">Cambiar día</button>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Seleccioná el horario:</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              <div
+                v-for="h in sueltaDiaEmpl.horarios" :key="h.clase_id"
+                class="horario-btn-empl"
+                :class="{ selected: sueltaHorarioEmpl?.clase_id === h.clase_id }"
+                @click="sueltaHorarioEmpl = h; inscribirForm.clase_id = h.clase_id"
+              >
+                <span style="font-weight:600;font-size:15px">{{ h.hora_inicio }}</span>
+                <span style="font-size:11px;" :class="h.cupos_disponibles > 0 ? 'text-green' : 'text-warning'">
+                  {{ h.cupos_disponibles > 0 ? `${h.cupos_disponibles} cupos` : 'Lista espera' }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Paso 3: confirmar clase elegida -->
+          <div v-else>
+            <div class="fecha-sel-banner-empl">
+              <span>📅 {{ sueltaDiaEmpl.dia_semana }} {{ formatFecha(sueltaDiaEmpl.fecha) }} · {{ sueltaHorarioEmpl.hora_inicio }} hs</span>
+              <button class="btn btn-outline btn-sm" @click="sueltaHorarioEmpl = null; inscribirForm.clase_id = null">Cambiar horario</button>
+            </div>
+
+            <!-- Monto a pagar -->
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px">¿El cliente paga la seña o el total?</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-sm" :class="inscribirForm.monto_pagar === 'senia' ? 'btn-primary' : 'btn-outline'"
+                @click="inscribirForm.monto_pagar = 'senia'">
+                Seña (50%) — ${{ Math.round((sueltaHorarioEmpl?.precio_clase||0)*0.5).toLocaleString() }}
+              </button>
+              <button class="btn btn-sm" :class="inscribirForm.monto_pagar === 'total' ? 'btn-primary' : 'btn-outline'"
+                @click="inscribirForm.monto_pagar = 'total'">
+                Total — ${{ (sueltaHorarioEmpl?.precio_clase||0).toLocaleString() }}
+              </button>
+            </div>
+          </div>
+
+        </template>
+      </template>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button
+          class="btn btn-secondary"
+          @click="abrirConfirmacionInscripcion"
+          :disabled="inscribirForm.tipo === 'no_abonado' ? !inscribirForm.clase_id || !sueltaHorarioEmpl : !inscribirForm.abono_opcion"
+        >
+          Ver detalle y confirmar →
+        </button>
+        <button class="btn btn-outline" @click="tab = null">Cancelar</button>
+      </div>
     </div>
 
     <!-- Tab: Suspensiones activas -->
@@ -158,6 +273,78 @@
           <button class="btn btn-primary btn-sm" @click="levantarSuspension(s)" :disabled="levantando === s.id">
             {{ levantando === s.id ? 'Procesando...' : 'Levantar' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal confirmación inscripción en efectivo -->
+    <div class="modal-overlay" v-if="modalConfirmInscripcion" @click.self="modalConfirmInscripcion = false">
+      <div class="modal card">
+        <h3>💵 Confirmar inscripción en efectivo</h3>
+        <p style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
+          El cliente <strong>{{ usuario?.nombre }} {{ usuario?.apellido }}</strong> pagará en efectivo en la sede.
+        </p>
+
+        <!-- Detalle para clase suelta -->
+        <template v-if="inscribirForm.tipo === 'no_abonado'">
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Fecha</span>
+            <span>{{ sueltaDiaEmpl?.dia_semana }}, {{ formatFecha(sueltaDiaEmpl?.fecha) }}</span>
+          </div>
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Horario</span>
+            <span>{{ sueltaHorarioEmpl?.hora_inicio }} hs</span>
+          </div>
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Tipo</span>
+            <span><span class="badge badge-blue">Clase suelta</span></span>
+          </div>
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Monto a cobrar</span>
+            <span style="font-weight:700;color:var(--verde-claro);font-size:18px">
+              ${{ inscribirForm.monto_pagar === 'senia'
+                ? Math.round((sueltaHorarioEmpl?.precio_clase||0)*0.5).toLocaleString()
+                : (sueltaHorarioEmpl?.precio_clase||0).toLocaleString() }}
+              {{ inscribirForm.monto_pagar === 'senia' ? '(seña 50%)' : '(total)' }}
+            </span>
+          </div>
+        </template>
+
+        <!-- Detalle para abono -->
+        <template v-if="inscribirForm.tipo === 'abonado' && detalleAbonoEmpl">
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Deporte</span>
+            <span>{{ detalleAbonoEmpl.actividad }}</span>
+          </div>
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Turno</span>
+            <span>{{ detalleAbonoEmpl.dia_semana }} {{ detalleAbonoEmpl.hora_inicio }} hs</span>
+          </div>
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Tipo</span>
+            <span><span class="badge badge-green">Abono mensual</span></span>
+          </div>
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Clases incluidas</span>
+            <span>{{ detalleAbonoEmpl.total_disponibles }} de {{ detalleAbonoEmpl.total_clases_mes }} este mes</span>
+          </div>
+          <div v-if="detalleAbonoEmpl.aplicar_descuento" class="confirm-row-modal">
+            <span class="confirm-label">Descuento</span>
+            <span style="color:var(--success)">50% por ingreso a mitad de mes</span>
+          </div>
+          <div class="confirm-row-modal">
+            <span class="confirm-label">Monto total a cobrar</span>
+            <span style="font-weight:700;color:var(--verde-claro);font-size:18px">${{ detalleAbonoEmpl.monto_total?.toLocaleString() }}</span>
+          </div>
+        </template>
+        <div class="alert alert-warning" style="margin-top:12px">
+          ⚠️ Al confirmar, el sistema registrará el cobro en efectivo automáticamente.
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-primary" @click="inscribirCliente" :disabled="inscribiendo">
+            {{ inscribiendo ? 'Procesando...' : '✓ Confirmar inscripción en efectivo' }}
+          </button>
+          <button class="btn btn-outline" @click="modalConfirmInscripcion = false">Cancelar</button>
         </div>
       </div>
     </div>
@@ -193,7 +380,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../../stores/auth.js'
 import api from '../../api.js'
@@ -211,8 +398,37 @@ const loadingReservas = ref(false)
 
 const actividades = ref([])
 const clasesDisponibles = ref([])
-const inscribirForm = ref({ actividad_id: '', clase_id: null, tipo: 'abonado' })
+const inscribirForm = ref({ actividad_id: '', clase_id: null, tipo: 'abonado', monto_pagar: 'senia', abono_opcion: null })
 const inscribiendo = ref(false)
+const modalConfirmInscripcion = ref(false)
+const abonoDiaEmpl = ref(null)
+const horariosAbonoEmpl = ref([])
+const loadingHorariosAbono = ref(false)
+const detalleAbonoEmpl = ref(null)
+const loadingDetalleAbonoEmpl = ref(false)
+// clase suelta empleado
+const sueltaDiaEmpl = ref(null)
+const sueltaHorarioEmpl = ref(null)
+const loadingFechasEmpl = ref(false)
+const fechasSueltaEmpl = ref([])
+
+// Días disponibles para clase suelta (empleado)
+const diasSueltaEmpl = computed(() => {
+  return fechasSueltaEmpl.value
+})
+
+// Agrupa horarios de abono por día
+const diasAbonoEmpl = computed(() => {
+  const map = {}
+  for (const op of horariosAbonoEmpl.value) {
+    const key = op.dia_semana_num
+    if (!map[key]) {
+      map[key] = { dia_semana: op.dia_semana, dia_semana_num: op.dia_semana_num, horarios: [] }
+    }
+    map[key].horarios.push(op)
+  }
+  return Object.values(map).sort((a, b) => a.dia_semana_num - b.dia_semana_num)
+})
 
 const suspensiones = ref([])
 const metodoLevantamiento = ref('efectivo')
@@ -267,26 +483,118 @@ async function fetchSuspensiones() {
   } catch {}
 }
 
-async function fetchClasesDisponibles() {
-  if (!inscribirForm.value.actividad_id) return
+function resetInscribirState() {
   inscribirForm.value.clase_id = null
-  const { data } = await api.get('/clases/', { params: { actividad_id: inscribirForm.value.actividad_id, solo_activas: true } })
-  clasesDisponibles.value = data
+  inscribirForm.value.abono_opcion = null
+  abonoDiaEmpl.value = null
+  detalleAbonoEmpl.value = null
+  clasesDisponibles.value = []
+  horariosAbonoEmpl.value = []
+  sueltaDiaEmpl.value = null
+  sueltaHorarioEmpl.value = null
+  fechasSueltaEmpl.value = []
+}
+
+function onActividadChange() {
+  resetInscribirState()
+  if (!inscribirForm.value.actividad_id) return
+  if (inscribirForm.value.tipo === 'no_abonado') fetchFechasSueltaEmpl()
+  else fetchHorariosAbonoEmpl()
+}
+
+function onTipoChange() {
+  resetInscribirState()
+  if (!inscribirForm.value.actividad_id) return
+  if (inscribirForm.value.tipo === 'no_abonado') fetchFechasSueltaEmpl()
+  else fetchHorariosAbonoEmpl()
+}
+
+async function fetchFechasSueltaEmpl() {
+  if (!inscribirForm.value.actividad_id) return
+  loadingFechasEmpl.value = true
+  fechasSueltaEmpl.value = []
+  try {
+    const ahora = new Date()
+    const pad = n => String(n).padStart(2, '0')
+    const hoy = `${ahora.getFullYear()}-${pad(ahora.getMonth()+1)}-${pad(ahora.getDate())}`
+    const hasta = new Date(ahora)
+    hasta.setMonth(hasta.getMonth() + 1)
+    const hastaStr = `${hasta.getFullYear()}-${pad(hasta.getMonth()+1)}-${pad(hasta.getDate())}`
+    const { data } = await api.get('/clases/fechas-disponibles', {
+      params: { actividad_id: inscribirForm.value.actividad_id, desde: hoy, hasta: hastaStr }
+    })
+    fechasSueltaEmpl.value = data
+  } finally {
+    loadingFechasEmpl.value = false
+  }
+}
+
+async function fetchHorariosAbonoEmpl() {
+  if (!inscribirForm.value.actividad_id) return
+  loadingHorariosAbono.value = true
+  horariosAbonoEmpl.value = []
+  try {
+    const { data } = await api.get('/clases/horarios-disponibles', {
+      params: { actividad_id: inscribirForm.value.actividad_id }
+    })
+    horariosAbonoEmpl.value = data
+  } finally {
+    loadingHorariosAbono.value = false
+  }
+}
+
+async function elegirHorarioAbonoEmpl(op) {
+  inscribirForm.value.abono_opcion = op
+  loadingDetalleAbonoEmpl.value = true
+  detalleAbonoEmpl.value = null
+  try {
+    const { data } = await api.get('/clases/detalle-abono', {
+      params: {
+        actividad_id: inscribirForm.value.actividad_id,
+        dia_semana_num: abonoDiaEmpl.value.dia_semana_num,
+        hora_inicio: op.hora_inicio
+      }
+    })
+    detalleAbonoEmpl.value = data
+  } finally {
+    loadingDetalleAbonoEmpl.value = false
+  }
+}
+
+function abrirConfirmacionInscripcion() {
+  modalConfirmInscripcion.value = true
 }
 
 async function inscribirCliente() {
   inscribiendo.value = true
   err.value = ''
   try {
-    const { data } = await api.post(`/usuarios/${route.params.id}/inscribir`, {
-      clase_id: inscribirForm.value.clase_id,
-      tipo: inscribirForm.value.tipo
-    })
-    if (data.en_espera) {
-      msg.value = `${usuario.value.nombre} fue añadido a la lista de espera`
+    if (inscribirForm.value.tipo === 'abonado' && detalleAbonoEmpl.value) {
+      // Abono: inscribir a todas las clases disponibles del mes
+      const clasesIds = detalleAbonoEmpl.value.clases
+        .filter(c => c.incluida_en_abono)
+        .map(c => c.clase_id)
+      const { data } = await api.post('/reservas/abono', {
+        clases_ids: clasesIds,
+        monto_total: detalleAbonoEmpl.value.monto_total,
+        metodo_pago: 'efectivo',
+        usuario_id: parseInt(route.params.id)
+      })
+      msg.value = `${usuario.value.nombre} inscripto en ${data.total_inscripto} clase(s). Total cobrado: $${detalleAbonoEmpl.value.monto_total?.toLocaleString()}`
     } else {
-      msg.value = `${usuario.value.nombre} inscripto correctamente`
+      // Clase suelta
+      const { data } = await api.post(`/usuarios/${route.params.id}/inscribir`, {
+        clase_id: inscribirForm.value.clase_id,
+        tipo: inscribirForm.value.tipo,
+        monto_pagar: inscribirForm.value.monto_pagar
+      })
+      if (data.en_espera) {
+        msg.value = `${usuario.value.nombre} fue añadido a la lista de espera`
+      } else {
+        msg.value = `${usuario.value.nombre} inscripto correctamente. Cobrado en efectivo.`
+      }
     }
+    modalConfirmInscripcion.value = false
     tab.value = 'reservas'
     await fetchReservas()
   } catch (e) {
@@ -381,6 +689,21 @@ onMounted(async () => {
 .text-green { color: var(--success); font-weight: 600; }
 .text-danger { color: var(--danger); font-weight: 600; }
 .loading-text { text-align: center; padding: 60px; color: var(--text-muted); }
+.confirm-row-modal { display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px; }
+.confirm-label { color:var(--text-muted); }
+.dia-btn-empl { background:var(--dark-3);border:2px solid var(--border);border-radius:10px;padding:12px 18px;cursor:pointer;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:100px;text-align:center; }
+.dia-btn-empl:hover { border-color:var(--verde);transform:translateY(-2px); }
+.horario-btn-empl { background:var(--dark-3);border:2px solid var(--border);border-radius:8px;padding:10px 16px;cursor:pointer;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:90px; }
+.horario-btn-empl:hover { border-color:var(--verde); }
+.horario-btn-empl.selected { border-color:var(--verde-claro);background:rgba(46,125,50,0.1); }
+.fecha-sel-banner-empl { display:flex;align-items:center;justify-content:space-between;background:rgba(46,125,50,0.08);border:1px solid var(--verde);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;font-weight:500; }
+.abono-detalle-lista { display:flex;flex-direction:column;gap:6px;margin-bottom:10px; }
+.abono-detalle-item { display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:6px;border:1px solid var(--border);font-size:13px; }
+.abono-detalle-item.incluida { background:rgba(63,185,80,0.05);border-color:rgba(63,185,80,0.2); }
+.abono-detalle-item.excluida { background:rgba(218,54,51,0.04);border-color:rgba(218,54,51,0.15);opacity:0.75; }
+.abono-total-empl { display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(46,125,50,0.08);border-radius:8px;border:1px solid var(--verde);margin-top:8px;font-size:14px;font-weight:600; }
+.text-green { color:var(--success); }
+.text-warning { color:var(--warning); }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { max-width: 440px; width: 100%; }
 .modal h3 { font-size: 22px; margin-bottom: 8px; }
