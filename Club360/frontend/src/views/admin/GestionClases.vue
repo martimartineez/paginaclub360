@@ -176,8 +176,12 @@ async function guardar() {
   guardando.value = true
   error.value = ''
   try {
-    await api.post('/clases/', form.value)
-    mensaje.value = 'Clase creada correctamente'
+    const { data } = await api.post('/clases/', form.value)
+    if (data.reactivada) {
+      mensaje.value = '♻️ ' + data.mensaje
+    } else {
+      mensaje.value = 'Clase creada correctamente'
+    }
     formModal.value = false
     await fetchClases()
   } catch (e) {

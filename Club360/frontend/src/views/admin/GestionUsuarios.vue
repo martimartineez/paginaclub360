@@ -50,16 +50,27 @@
               <span v-else class="badge badge-green">OK</span>
             </td>
             <td>
-              <router-link
-                v-if="u.rol === 'cliente'"
-                :to="`/usuarios/${u.id}`"
-                class="btn btn-primary btn-sm"
-              >
-                👤 Ver detalle
-              </router-link>
-              <button v-else class="btn btn-outline btn-sm" @click="verDetalleSimple(u)">
-                Ver info
-              </button>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <router-link
+                  v-if="u.rol === 'cliente'"
+                  :to="`/usuarios/${u.id}`"
+                  class="btn btn-primary btn-sm"
+                >
+                  👤 Ver detalle
+                </router-link>
+                <button v-else class="btn btn-outline btn-sm" @click="verDetalleSimple(u)">
+                  Ver info
+                </button>
+                <!-- Borrar solo si no es admin y el actor tiene permiso -->
+                <button
+                  v-if="u.rol !== 'administrador' && (auth.isAdmin || u.rol === 'cliente')"
+                  class="btn btn-danger btn-sm"
+                  @click="confirmarBorrar(u)"
+                  title="Desactivar usuario"
+                >
+                  🗑
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -85,6 +96,27 @@
           <div class="detalle-item"><span class="label">Miembro desde</span><span>{{ new Date(detalleSimple.fecha_registro).toLocaleDateString() }}</span></div>
         </div>
         <button class="btn btn-outline btn-sm" style="margin-top:16px" @click="detalleSimple = null">Cerrar</button>
+      </div>
+    </div>
+
+    <!-- Modal confirmar borrado -->
+    <div class="modal-overlay" v-if="modalBorrar" @click.self="modalBorrar = null">
+      <div class="modal card">
+        <h3>🗑️ Desactivar usuario</h3>
+        <p style="color:var(--text-muted);font-size:14px;margin:12px 0">
+          ¿Estás seguro que querés desactivar a
+          <strong>{{ modalBorrar.nombre }} {{ modalBorrar.apellido }}</strong>?
+        </p>
+        <div class="alert alert-warning">
+          El usuario quedará inactivo y no podrá ingresar al sistema.
+          Si se vuelve a registrar con los mismos datos, se reactivará automáticamente.
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-danger" @click="ejecutarBorrado" :disabled="borrando">
+            {{ borrando ? 'Desactivando...' : 'Sí, desactivar' }}
+          </button>
+          <button class="btn btn-outline" @click="modalBorrar = null">Cancelar</button>
+        </div>
       </div>
     </div>
 
@@ -136,6 +168,8 @@ const rolRegistrando = ref('cliente')
 const regForm = ref({ nombre: '', apellido: '', dni: '', email: '', password: '' })
 const regError = ref('')
 const regLoading = ref(false)
+const modalBorrar = ref(null)
+const borrando = ref(false)
 
 function rolBadge(rol) {
   return { 'administrador': 'badge-green', 'empleado': 'badge-blue', 'cliente': 'badge-yellow' }[rol] || 'badge-yellow'
@@ -171,8 +205,8 @@ async function registrarUsuario() {
   regLoading.value = true
   regError.value = ''
   try {
-    await api.post('/auth/register', { ...regForm.value, rol: rolRegistrando.value })
-    regMsg.value = `${rolRegistrando.value === 'cliente' ? 'Cliente' : 'Empleado'} registrado correctamente`
+    const res = await api.post('/auth/register', { ...regForm.value, rol: rolRegistrando.value })
+    regMsg.value = `${rolRegistrando.value === 'cliente' ? 'Cliente' : 'Empleado'} ${res.data.reactivado ? 'reactivado' : 'registrado'} correctamente`
     cerrarModal()
     fetchUsuarios()
     setTimeout(() => regMsg.value = '', 3000)
@@ -180,6 +214,25 @@ async function registrarUsuario() {
     regError.value = e.response?.data?.error || 'Error al registrar'
   } finally {
     regLoading.value = false
+  }
+}
+
+function confirmarBorrar(u) {
+  modalBorrar.value = u
+}
+
+async function ejecutarBorrado() {
+  borrando.value = true
+  try {
+    await api.post(`/usuarios/${modalBorrar.value.id}/borrar`)
+    regMsg.value = `${modalBorrar.value.nombre} desactivado correctamente`
+    modalBorrar.value = null
+    fetchUsuarios()
+    setTimeout(() => regMsg.value = '', 3000)
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Error al desactivar'
+  } finally {
+    borrando.value = false
   }
 }
 

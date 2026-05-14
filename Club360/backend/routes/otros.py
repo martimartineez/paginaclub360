@@ -144,6 +144,28 @@ def update_usuario(uid):
     return jsonify(target.to_dict()), 200
 
 
+@usuarios_bp.route('/<int:uid>/borrar', methods=['POST'])
+@jwt_required()
+@require_rol('administrador', 'empleado')
+def borrar_usuario(uid):
+    """Borrado lógico de un usuario (desactivar)"""
+    user_id = get_jwt_identity()
+    actor = Usuario.query.get(int(user_id))
+    target = Usuario.query.get_or_404(uid)
+
+    # Empleado solo puede borrar clientes; admin puede borrar clientes y empleados
+    if actor.rol == 'empleado' and target.rol != 'cliente':
+        return jsonify({'error': 'Los empleados solo pueden borrar clientes'}), 403
+    if target.rol == 'administrador':
+        return jsonify({'error': 'No se puede borrar un administrador'}), 403
+    if not target.activo:
+        return jsonify({'error': 'El usuario ya está desactivado'}), 400
+
+    target.activo = False
+    db.session.commit()
+    return jsonify({'mensaje': f'Usuario {target.nombre} {target.apellido} desactivado correctamente'}), 200
+
+
 # ---- ACTIVIDADES ----
 
 @actividades_bp.route('/', methods=['GET'])

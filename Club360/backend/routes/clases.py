@@ -33,11 +33,9 @@ def get_clases():
     if actividad_id:
         query = query.filter_by(actividad_id=actividad_id)
     if desde:
-        fecha_desde = datetime.strptime(desde, '%Y-%m-%d').date()
-        query = query.filter(Clase.fecha >= fecha_desde)
+        query = query.filter(Clase.fecha >= datetime.strptime(desde, '%Y-%m-%d').date())
     if hasta:
-        fecha_hasta = datetime.strptime(hasta, '%Y-%m-%d').date()
-        query = query.filter(Clase.fecha <= fecha_hasta)
+        query = query.filter(Clase.fecha <= datetime.strptime(hasta, '%Y-%m-%d').date())
 
     clases = query.order_by(Clase.fecha, Clase.hora_inicio).all()
     return jsonify([c.to_dict() for c in clases]), 200
@@ -45,23 +43,25 @@ def get_clases():
 
 @clases_bp.route('/fechas-disponibles', methods=['GET'])
 def get_fechas_disponibles():
-    """Retorna fechas únicas disponibles para una actividad en un rango"""
+    """Fechas únicas con horarios para clase individual — máximo 1 mes desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
-    desde = request.args.get('desde')
-    hasta = request.args.get('hasta')
-
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
-    query = Clase.query.filter_by(activa=True, cancelada=False, actividad_id=actividad_id)
-    if desde:
-        query = query.filter(Clase.fecha >= datetime.strptime(desde, '%Y-%m-%d').date())
-    if hasta:
-        query = query.filter(Clase.fecha <= datetime.strptime(hasta, '%Y-%m-%d').date())
+    hoy = date.today()
+    hasta_max = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
+    # Si estamos cerca del fin de mes, extender al mes siguiente para dar margen
+    desde_str = request.args.get('desde')
+    hasta_str = request.args.get('hasta')
+    desde = datetime.strptime(desde_str, '%Y-%m-%d').date() if desde_str else hoy
+    hasta = datetime.strptime(hasta_str, '%Y-%m-%d').date() if hasta_str else hasta_max
+    # Nunca mostrar clases pasadas
+    desde = max(desde, hoy)
 
+    query = Clase.query.filter_by(activa=True, cancelada=False, actividad_id=actividad_id)
+    query = query.filter(Clase.fecha >= desde, Clase.fecha <= hasta)
     clases = query.order_by(Clase.fecha, Clase.hora_inicio).all()
 
-    # Agrupar por fecha
     fechas = {}
     for c in clases:
         f = c.fecha.isoformat()
@@ -84,24 +84,22 @@ def get_fechas_disponibles():
 
 @clases_bp.route('/horarios-disponibles', methods=['GET'])
 def get_horarios_disponibles():
-    """Para abonos: dado actividad_id, retorna combinaciones dia_semana+hora únicas con clases del mes"""
+    """Para abonos: combinaciones día+hora del mes actual, solo desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
     hoy = date.today()
-    # Buscar clases del mes actual y siguiente para mostrar opciones
-    primer_dia_mes = date(hoy.year, hoy.month, 1)
     ultimo_dia_mes = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
 
+    # Solo clases desde hoy hasta fin del mes actual
     clases = Clase.query.filter_by(
         activa=True, cancelada=False, actividad_id=actividad_id
     ).filter(
-        Clase.fecha >= primer_dia_mes,
+        Clase.fecha >= hoy,
         Clase.fecha <= ultimo_dia_mes
     ).order_by(Clase.fecha, Clase.hora_inicio).all()
 
-    # Agrupar por (dia_semana_num, hora) para mostrar opciones únicas de abono
     opciones = {}
     for c in clases:
         key = f"{c.fecha.weekday()}_{c.hora_inicio.strftime('%H:%M')}"
@@ -125,42 +123,39 @@ def get_horarios_disponibles():
 
 @clases_bp.route('/detalle-abono', methods=['GET'])
 def get_detalle_abono():
-    """Dado actividad_id, dia_semana_num y hora_inicio, retorna todas las clases del mes y el precio del abono"""
+    """Clases del mes actual para un abono — solo desde hoy en adelante"""
     actividad_id = request.args.get('actividad_id', type=int)
     dia_semana_num = request.args.get('dia_semana_num', type=int)
-    hora_inicio = request.args.get('hora_inicio')  # HH:MM
+    hora_inicio = request.args.get('hora_inicio')
 
     if actividad_id is None or dia_semana_num is None or not hora_inicio:
         return jsonify({'error': 'Parámetros requeridos: actividad_id, dia_semana_num, hora_inicio'}), 400
 
     hoy = date.today()
-    primer_dia_mes = date(hoy.year, hoy.month, 1)
     ultimo_dia_mes = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
-
     hora_obj = datetime.strptime(hora_inicio, '%H:%M').time()
 
+    # Solo clases desde HOY (no pasadas) hasta fin del mes actual
     clases_mes = Clase.query.filter_by(
         activa=True,
         actividad_id=actividad_id,
         hora_inicio=hora_obj
     ).filter(
-        Clase.fecha >= primer_dia_mes,
+        Clase.fecha >= hoy,
         Clase.fecha <= ultimo_dia_mes
     ).order_by(Clase.fecha).all()
 
-    # Filtrar por día de semana
     clases_mes = [c for c in clases_mes if c.fecha.weekday() == dia_semana_num]
 
     actividad = Actividad.query.get(actividad_id)
     precio_unitario = float(actividad.precio_clase) if actividad else 0
 
-    # Clases disponibles (con cupo, no canceladas)
     clases_disponibles = [c for c in clases_mes if not c.cancelada and c.cupos_disponibles() > 0]
-    total_clases_mes = len(clases_mes)
+    total_clases = len(clases_mes)
     total_disponibles = len(clases_disponibles)
 
-    # Lógica de precio: mitad de mes con más de 1 clase disponible → 50% descuento por clase
-    es_mitad_de_mes = hoy.day > 1 and hoy != primer_dia_mes
+    # Descuento mitad de mes: si hoy > 1 del mes y hay más de 1 clase disponible
+    es_mitad_de_mes = hoy.day > 1
     aplicar_descuento = es_mitad_de_mes and total_disponibles > 1
     precio_por_clase = precio_unitario * 0.5 if aplicar_descuento else precio_unitario
     monto_total = precio_por_clase * total_disponibles
@@ -186,7 +181,7 @@ def get_detalle_abono():
         'precio_unitario': precio_unitario,
         'precio_por_clase': precio_por_clase,
         'aplicar_descuento': aplicar_descuento,
-        'total_clases_mes': total_clases_mes,
+        'total_clases_mes': total_clases,
         'total_disponibles': total_disponibles,
         'monto_total': monto_total,
         'clases': detalle_clases
@@ -212,11 +207,33 @@ def create_clase():
     except ValueError:
         return jsonify({'error': 'Formato de fecha inválido (YYYY-MM-DD)'}), 400
 
-    clase = Clase(
-        actividad_id=data['actividad_id'],
+    hora = datetime.strptime(data['hora_inicio'], '%H:%M').time()
+    actividad_id = int(data['actividad_id'])
+    cupo_maximo = int(data['cupo_maximo'])
+
+    # Verificar unicidad: misma actividad + fecha + hora
+    existente = Clase.query.filter_by(
+        actividad_id=actividad_id,
         fecha=fecha,
-        hora_inicio=datetime.strptime(data['hora_inicio'], '%H:%M').time(),
-        cupo_maximo=data['cupo_maximo']
+        hora_inicio=hora
+    ).first()
+
+    if existente:
+        if existente.activa and not existente.cancelada:
+            return jsonify({'error': 'Ya existe una clase activa con esa actividad, fecha y horario'}), 409
+        # Reactivar clase cancelada o inactiva
+        existente.activa = True
+        existente.cancelada = False
+        existente.cupo_maximo = cupo_maximo
+        db.session.commit()
+        return jsonify({**existente.to_dict(), 'reactivada': True,
+                        'mensaje': 'La clase fue reactivada correctamente'}), 200
+
+    clase = Clase(
+        actividad_id=actividad_id,
+        fecha=fecha,
+        hora_inicio=hora,
+        cupo_maximo=cupo_maximo
     )
     db.session.add(clase)
     db.session.commit()
@@ -243,6 +260,7 @@ def update_clase(clase_id):
 @jwt_required()
 @require_rol('administrador')
 def cancelar_clase(clase_id):
+    """Borrado lógico: marca como cancelada y libera reservas"""
     clase = Clase.query.get_or_404(clase_id)
     if clase.cancelada:
         return jsonify({'error': 'La clase ya está cancelada'}), 400

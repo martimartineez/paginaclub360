@@ -34,10 +34,31 @@ def register():
         # Sin sesión: solo se puede registrar como cliente
         rol_pedido = 'cliente'
 
-    if Usuario.query.filter_by(email=data['email']).first():
+    # Buscar usuario existente por email o DNI
+    por_email = Usuario.query.filter_by(email=data['email']).first()
+    por_dni = Usuario.query.filter_by(dni=data['dni']).first()
+
+    # Si existe activo → error
+    if por_email and por_email.activo:
         return jsonify({'error': 'El email ya está registrado'}), 409
-    if Usuario.query.filter_by(dni=data['dni']).first():
+    if por_dni and por_dni.activo:
         return jsonify({'error': 'El DNI ya está registrado'}), 409
+
+    # Si existe pero está desactivado → reactivar
+    usuario_existente = por_email or por_dni
+    if usuario_existente and not usuario_existente.activo:
+        usuario_existente.activo = True
+        usuario_existente.nombre = data['nombre']
+        usuario_existente.apellido = data['apellido']
+        usuario_existente.rol = rol_pedido
+        usuario_existente.set_password(data['password'])
+        db.session.commit()
+        user = usuario_existente
+        if not user_id:
+            token = create_access_token(identity=str(user.id))
+            return jsonify({'token': token, 'user': user.to_dict(), 'reactivado': True}), 200
+        return jsonify({'user': user.to_dict(), 'reactivado': True,
+                        'mensaje': f'Usuario reactivado como {rol_pedido}'}), 200
 
     user = Usuario(
         nombre=data['nombre'],
