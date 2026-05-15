@@ -11,14 +11,15 @@
           <span v-if="clase.cancelada" class="badge badge-red">Cancelada</span>
         </div>
       </div>
-      <!-- Botón cancelar clase: solo admin y no cancelada -->
-      <button
-        v-if="auth.isAdmin && !clase.cancelada"
-        class="btn btn-danger"
-        @click="confirmarCancelar = true"
-      >
-        🚫 Cancelar esta clase
-      </button>
+      <!-- Botones admin: editar cupo y cancelar clase -->
+      <div v-if="auth.isAdmin && !clase.cancelada" style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" @click="modalEditarCupo = true">
+          ✏️ Editar cupo
+        </button>
+        <button class="btn btn-danger" @click="confirmarCancelar = true">
+          🚫 Cancelar esta clase
+        </button>
+      </div>
     </div>
 
     <div class="alert alert-error" v-if="error">{{ error }}</div>
@@ -154,6 +155,35 @@
       </table>
     </div>
 
+    <!-- Modal editar cupo -->
+    <div class="modal-overlay" v-if="modalEditarCupo" @click.self="modalEditarCupo = false">
+      <div class="modal card">
+        <h3>✏️ Editar cupo</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
+          Cupo actual: <strong>{{ clase.cupo_maximo }}</strong> ·
+          Inscriptos: <strong>{{ clase.cupo_maximo - clase.cupos_disponibles }}</strong>
+        </p>
+        <div class="input-group">
+          <label>Nuevo cupo máximo</label>
+          <input
+            v-model.number="nuevoCupo"
+            type="number"
+            :min="clase.cupo_maximo - clase.cupos_disponibles"
+            max="50"
+          />
+        </div>
+        <div class="alert alert-warning" style="font-size:13px">
+          No podés bajar el cupo por debajo de los inscriptos actuales ({{ clase.cupo_maximo - clase.cupos_disponibles }}).
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <button class="btn btn-primary" @click="guardarCupo" :disabled="guardandoCupo">
+            {{ guardandoCupo ? 'Guardando...' : 'Guardar' }}
+          </button>
+          <button class="btn btn-outline" @click="modalEditarCupo = false">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal confirmar cancelar clase -->
     <div class="modal-overlay" v-if="confirmarCancelar" @click.self="confirmarCancelar = false">
       <div class="modal card">
@@ -219,6 +249,9 @@ const reservando = ref(false)
 const reservandoLoading = ref(false)
 const confirmarCancelar = ref(false)
 const cancelando = ref(false)
+const modalEditarCupo = ref(false)
+const nuevoCupo = ref(10)
+const guardandoCupo = ref(false)
 const confirmarCancelarReserva = ref(false)
 const cancelandoReserva = ref(false)
 
@@ -241,6 +274,7 @@ async function fetchClase() {
   } catch (e) {
     error.value = 'No se pudo cargar la clase'
   } finally {
+    if (data) nuevoCupo.value = data.cupo_maximo
     loadingClase.value = false
   }
 }
@@ -292,6 +326,21 @@ async function reservar(tipo) {
     error.value = e.response?.data?.error || 'Error al reservar'
   } finally {
     reservandoLoading.value = false
+  }
+}
+
+async function guardarCupo() {
+  guardandoCupo.value = true
+  error.value = ''
+  try {
+    await api.put(`/clases/${route.params.id}`, { cupo_maximo: nuevoCupo.value })
+    mensaje.value = 'Cupo actualizado correctamente'
+    modalEditarCupo.value = false
+    await fetchClase()
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Error al actualizar cupo'
+  } finally {
+    guardandoCupo.value = false
   }
 }
 

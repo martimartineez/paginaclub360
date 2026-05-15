@@ -59,10 +59,7 @@
               <span v-else class="badge badge-green">Activa</span>
             </td>
             <td>
-              <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <router-link :to="`/clases/${c.id}`" class="btn btn-outline btn-sm">🔍 Detalle</router-link>
-                <button v-if="!c.cancelada" class="btn btn-secondary btn-sm" @click="abrirEditar(c)">✏️ Cupo</button>
-              </div>
+              <router-link :to="`/clases/${c.id}`" class="btn btn-outline btn-sm">🔍 Detalle</router-link>
             </td>
           </tr>
         </tbody>
@@ -107,26 +104,6 @@
       </div>
     </div>
 
-    <!-- Modal editar cupo -->
-    <div class="modal-overlay" v-if="editModal" @click.self="editModal = false">
-      <div class="modal card">
-        <h3>Editar cupo — {{ editando?.actividad }} {{ formatFecha(editando?.fecha) }}</h3>
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
-          Solo se puede modificar el cupo máximo. El cupo no puede ser menor a los inscriptos actuales
-          ({{ editando?.cupo_maximo - editando?.cupos_disponibles }} inscriptos).
-        </p>
-        <div class="input-group">
-          <label>Nuevo cupo máximo</label>
-          <input v-model.number="nuevoCupo" type="number" :min="editando?.cupo_maximo - editando?.cupos_disponibles" />
-        </div>
-        <div style="display:flex;gap:10px">
-          <button class="btn btn-primary" @click="guardarCupo" :disabled="guardando">
-            {{ guardando ? 'Guardando...' : 'Guardar' }}
-          </button>
-          <button class="btn btn-outline" @click="editModal = false">Cancelar</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -139,9 +116,7 @@ const actividades = ref([])
 const loading = ref(false)
 const error = ref(''), mensaje = ref('')
 const formModal = ref(false)
-const editModal = ref(false)
-const editando = ref(null)
-const nuevoCupo = ref(10)
+
 const guardando = ref(false)
 const filtroActividad = ref('')
 const mostrarCanceladas = ref(false)
@@ -162,12 +137,6 @@ function abrirCrear() {
   formModal.value = true
 }
 
-function abrirEditar(c) {
-  editando.value = c
-  nuevoCupo.value = c.cupo_maximo
-  editModal.value = true
-}
-
 async function guardar() {
   if (!form.value.actividad_id || !form.value.fecha) {
     error.value = 'Completá todos los campos requeridos'
@@ -186,21 +155,6 @@ async function guardar() {
     await fetchClases()
   } catch (e) {
     error.value = e.response?.data?.error || 'Error al crear clase'
-  } finally {
-    guardando.value = false
-  }
-}
-
-async function guardarCupo() {
-  guardando.value = true
-  error.value = ''
-  try {
-    await api.put(`/clases/${editando.value.id}`, { cupo_maximo: nuevoCupo.value })
-    mensaje.value = 'Cupo actualizado'
-    editModal.value = false
-    await fetchClases()
-  } catch (e) {
-    error.value = e.response?.data?.error || 'Error al actualizar cupo'
   } finally {
     guardando.value = false
   }

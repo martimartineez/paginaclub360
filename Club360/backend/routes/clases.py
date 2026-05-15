@@ -127,6 +127,7 @@ def get_detalle_abono():
     actividad_id = request.args.get('actividad_id', type=int)
     dia_semana_num = request.args.get('dia_semana_num', type=int)
     hora_inicio = request.args.get('hora_inicio')
+    usuario_id = request.args.get('usuario_id', type=int)  # para verificar beneficio
 
     if actividad_id is None or dia_semana_num is None or not hora_inicio:
         return jsonify({'error': 'Parámetros requeridos: actividad_id, dia_semana_num, hora_inicio'}), 400
@@ -150,19 +151,43 @@ def get_detalle_abono():
     actividad = Actividad.query.get(actividad_id)
     precio_unitario = float(actividad.precio_clase) if actividad else 0
 
-    clases_disponibles = [c for c in clases_mes if not c.cancelada and c.cupos_disponibles() > 0]
+    # Verificar si el usuario ya está inscripto en alguna de estas clases
+    from models import Reserva
+    clases_ya_inscripto = set()
+    if usuario_id:
+        reservas_usuario = Reserva.query.filter_by(
+            usuario_id=usuario_id, estado='activa', tipo='abonado'
+        ).all()
+        clases_ya_inscripto = {r.clase_id for r in reservas_usuario}
+
+    clases_disponibles = [
+        c for c in clases_mes
+        if not c.cancelada and c.cupos_disponibles() > 0 and c.id not in clases_ya_inscripto
+    ]
+    clases_ya_en = [c for c in clases_mes if c.id in clases_ya_inscripto]
     total_clases = len(clases_mes)
     total_disponibles = len(clases_disponibles)
 
-    # Descuento mitad de mes: si hoy > 1 del mes y hay más de 1 clase disponible
+    # Verificar si el usuario perdió el beneficio por 3+ cancelaciones de abono
+    usuario_tiene_beneficio = True
+    if usuario_id:
+        from models import Reserva as R
+        reservas_abonado = R.query.filter_by(usuario_id=usuario_id, tipo='abonado').all()
+        cancelaciones_totales = sum(r.cancelaciones_mes or 0 for r in reservas_abonado)
+        if cancelaciones_totales >= 3:
+            usuario_tiene_beneficio = False
+
+    # Descuento 20% por clase si es mitad de mes, hay más de 1 clase disponible
+    # Y el usuario no perdió el beneficio
     es_mitad_de_mes = hoy.day > 1
-    aplicar_descuento = es_mitad_de_mes and total_disponibles > 1
-    precio_por_clase = precio_unitario * 0.5 if aplicar_descuento else precio_unitario
+    aplicar_descuento = es_mitad_de_mes and total_disponibles > 1 and usuario_tiene_beneficio
+    precio_por_clase = precio_unitario * 0.8 if aplicar_descuento else precio_unitario
     monto_total = precio_por_clase * total_disponibles
 
     detalle_clases = []
     for c in clases_mes:
-        disponible = not c.cancelada and c.cupos_disponibles() > 0
+        ya_inscripto = c.id in clases_ya_inscripto
+        disponible = not c.cancelada and c.cupos_disponibles() > 0 and not ya_inscripto
         detalle_clases.append({
             'clase_id': c.id,
             'fecha': c.fecha.isoformat(),
@@ -170,6 +195,7 @@ def get_detalle_abono():
             'hora_inicio': c.hora_inicio.strftime('%H:%M'),
             'cupos_disponibles': c.cupos_disponibles(),
             'cancelada': c.cancelada,
+            'ya_inscripto': ya_inscripto,
             'incluida_en_abono': disponible,
             'precio_clase': precio_por_clase if disponible else 0
         })
@@ -181,8 +207,11 @@ def get_detalle_abono():
         'precio_unitario': precio_unitario,
         'precio_por_clase': precio_por_clase,
         'aplicar_descuento': aplicar_descuento,
+        'descuento_pct': 20 if aplicar_descuento else 0,
+        'usuario_tiene_beneficio': usuario_tiene_beneficio,
         'total_clases_mes': total_clases,
         'total_disponibles': total_disponibles,
+        'ya_inscripto_en': [c.id for c in clases_ya_en],
         'monto_total': monto_total,
         'clases': detalle_clases
     }), 200

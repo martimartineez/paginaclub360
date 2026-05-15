@@ -50,27 +50,10 @@
               <span v-else class="badge badge-green">OK</span>
             </td>
             <td>
-              <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <router-link
-                  v-if="u.rol === 'cliente'"
-                  :to="`/usuarios/${u.id}`"
-                  class="btn btn-primary btn-sm"
-                >
-                  👤 Ver detalle
-                </router-link>
-                <button v-else class="btn btn-outline btn-sm" @click="verDetalleSimple(u)">
-                  Ver info
-                </button>
-                <!-- Borrar solo si no es admin y el actor tiene permiso -->
-                <button
-                  v-if="u.rol !== 'administrador' && (auth.isAdmin || u.rol === 'cliente')"
-                  class="btn btn-danger btn-sm"
-                  @click="confirmarBorrar(u)"
-                  title="Desactivar usuario"
-                >
-                  🗑
-                </button>
-              </div>
+              <!-- Todos van a detalle — el borrado está dentro del detalle -->
+              <router-link :to="`/usuarios/${u.id}`" class="btn btn-primary btn-sm">
+                👤 Ver detalle
+              </router-link>
             </td>
           </tr>
         </tbody>
@@ -96,27 +79,6 @@
           <div class="detalle-item"><span class="label">Miembro desde</span><span>{{ new Date(detalleSimple.fecha_registro).toLocaleDateString() }}</span></div>
         </div>
         <button class="btn btn-outline btn-sm" style="margin-top:16px" @click="detalleSimple = null">Cerrar</button>
-      </div>
-    </div>
-
-    <!-- Modal confirmar borrado -->
-    <div class="modal-overlay" v-if="modalBorrar" @click.self="modalBorrar = null">
-      <div class="modal card">
-        <h3>🗑️ Desactivar usuario</h3>
-        <p style="color:var(--text-muted);font-size:14px;margin:12px 0">
-          ¿Estás seguro que querés desactivar a
-          <strong>{{ modalBorrar.nombre }} {{ modalBorrar.apellido }}</strong>?
-        </p>
-        <div class="alert alert-warning">
-          El usuario quedará inactivo y no podrá ingresar al sistema.
-          Si se vuelve a registrar con los mismos datos, se reactivará automáticamente.
-        </div>
-        <div style="display:flex;gap:10px;margin-top:16px">
-          <button class="btn btn-danger" @click="ejecutarBorrado" :disabled="borrando">
-            {{ borrando ? 'Desactivando...' : 'Sí, desactivar' }}
-          </button>
-          <button class="btn btn-outline" @click="modalBorrar = null">Cancelar</button>
-        </div>
       </div>
     </div>
 

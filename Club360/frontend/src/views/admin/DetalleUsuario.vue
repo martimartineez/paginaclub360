@@ -31,21 +31,31 @@
       </div>
     </div>
 
-    <!-- Acciones rápidas (solo para clientes) -->
-    <div class="card acciones-card" style="margin-bottom:24px" v-if="usuario.rol === 'cliente'">
+    <!-- Acciones según rol del usuario visto -->
+    <div class="card acciones-card" style="margin-bottom:24px">
       <h3 style="font-size:18px;margin-bottom:16px">Acciones</h3>
       <div class="acciones-grid">
-        <button class="accion-btn" @click="tab = 'reservas'; fetchReservas()">
-          <span class="accion-icon">📋</span>
-          <span>Ver reservas</span>
-        </button>
-        <button class="accion-btn" @click="tab = 'inscribir'">
-          <span class="accion-icon">➕</span>
-          <span>Inscribir a clase</span>
-        </button>
-        <button class="accion-btn" @click="tab = 'suspensiones'; fetchSuspensiones()" v-if="usuario.suspensiones_activas?.length">
-          <span class="accion-icon">🔓</span>
-          <span>Cancelar suspensión</span>
+        <template v-if="usuario.rol === 'cliente'">
+          <button class="accion-btn" @click="tab = 'reservas'; fetchReservas()">
+            <span class="accion-icon">📋</span>
+            <span>Ver reservas</span>
+          </button>
+          <button class="accion-btn" @click="tab = 'inscribir'">
+            <span class="accion-icon">➕</span>
+            <span>Inscribir a clase</span>
+          </button>
+          <button class="accion-btn" @click="tab = 'suspensiones'; fetchSuspensiones()" v-if="usuario.suspensiones_activas?.length">
+            <span class="accion-icon">🔓</span>
+            <span>Cancelar suspensión</span>
+          </button>
+        </template>
+        <button
+          class="accion-btn accion-peligro"
+          v-if="usuario.rol !== 'administrador' && (auth.isAdmin || usuario.rol === 'cliente')"
+          @click="modalEliminar = true"
+        >
+          <span class="accion-icon">🗑️</span>
+          <span>Eliminar usuario</span>
         </button>
       </div>
     </div>
@@ -72,13 +82,22 @@
               <span v-else style="color:var(--text-muted)">—</span>
             </td>
             <td>
-              <button
-                v-if="r.tipo === 'no_abonado' && !r.senia_pagada && r.estado === 'activa'"
-                class="btn btn-primary btn-sm"
-                @click="abrirPagoSenia(r)"
-              >
-                💳 Pagar seña
-              </button>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button
+                  v-if="r.tipo === 'no_abonado' && !r.senia_pagada && r.estado === 'activa'"
+                  class="btn btn-primary btn-sm"
+                  @click="abrirPagoSenia(r)"
+                >
+                  💳 Pagar seña
+                </button>
+                <button
+                  v-if="r.estado === 'activa'"
+                  class="btn btn-danger btn-sm"
+                  @click="confirmarCancelarReserva(r)"
+                >
+                  ✕ Cancelar
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -151,20 +170,27 @@
               <div class="abono-detalle-lista">
                 <div v-for="c in detalleAbonoEmpl.clases" :key="c.clase_id"
                   class="abono-detalle-item"
-                  :class="{ incluida: c.incluida_en_abono, excluida: !c.incluida_en_abono }">
+                  :class="{ incluida: c.incluida_en_abono, excluida: !c.incluida_en_abono && !c.ya_inscripto, 'ya-inscripto-item': c.ya_inscripto }">
                   <div style="display:flex;align-items:center;gap:8px">
-                    <span>{{ c.incluida_en_abono ? '✓' : '✗' }}</span>
+                    <span>{{ c.incluida_en_abono ? '✓' : (c.ya_inscripto ? '→' : '✗') }}</span>
                     <div>
                       <p style="font-size:13px;font-weight:600">{{ c.dia_semana }} {{ formatFecha(c.fecha) }}</p>
                       <p style="font-size:11px;color:var(--text-muted)">{{ c.hora_inicio }} hs</p>
                     </div>
                   </div>
                   <span v-if="c.incluida_en_abono" style="font-size:13px;color:var(--verde-claro);font-weight:600">${{ c.precio_clase?.toLocaleString() }}</span>
+                  <span v-else-if="c.ya_inscripto" style="font-size:11px;color:var(--azul-claro)">Ya inscripto</span>
                   <span v-else style="font-size:11px;color:var(--danger)">{{ c.cancelada ? 'Cancelada' : 'Sin cupo' }}</span>
                 </div>
               </div>
+              <div v-if="detalleAbonoEmpl.ya_inscripto_en?.length" class="alert alert-warning" style="font-size:13px;margin-top:8px">
+                ℹ️ El cliente ya está inscripto en {{ detalleAbonoEmpl.ya_inscripto_en.length }} clase(s) de este turno. Solo se lo inscribirá en las clases nuevas.
+              </div>
               <div v-if="detalleAbonoEmpl.aplicar_descuento" class="alert alert-success" style="margin-top:10px;font-size:13px">
-                🎉 Mitad de mes con más de 1 clase: 50% de descuento por clase
+                🎉 Mitad de mes con más de 1 clase disponible. 20% de descuento por clase.
+              </div>
+              <div v-else-if="!detalleAbonoEmpl.usuario_tiene_beneficio && detalleAbonoEmpl.total_disponibles > 1" class="alert alert-warning" style="margin-top:10px;font-size:13px">
+                ⚠️ El cliente perdió el beneficio del 20% por haber cancelado 3 o más clases de abono. Se cobra precio completo.
               </div>
               <div class="abono-total-empl">
                 <span>Total abono ({{ detalleAbonoEmpl.total_disponibles }} clases)</span>
@@ -349,6 +375,58 @@
       </div>
     </div>
 
+    <!-- Modal eliminar usuario -->
+    <div class="modal-overlay" v-if="modalEliminar" @click.self="modalEliminar = false">
+      <div class="modal card">
+        <h3>🗑️ Eliminar usuario</h3>
+        <p style="color:var(--text-muted);font-size:14px;margin:12px 0">
+          ¿Estás seguro que querés desactivar a
+          <strong>{{ usuario?.nombre }} {{ usuario?.apellido }}</strong>?
+        </p>
+        <div class="alert alert-warning">
+          El usuario quedará inactivo y no podrá ingresar al sistema.
+          Si se re-registra con los mismos datos, se reactivará automáticamente.
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-danger" @click="ejecutarEliminar" :disabled="eliminando">
+            {{ eliminando ? 'Eliminando...' : 'Sí, eliminar' }}
+          </button>
+          <button class="btn btn-outline" @click="modalEliminar = false">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal confirmar cancelación de reserva -->
+    <div class="modal-overlay" v-if="modalCancelarReserva" @click.self="modalCancelarReserva = null">
+      <div class="modal card">
+        <h3>⚠️ Cancelar reserva</h3>
+        <p style="color:var(--text-muted);font-size:14px;margin:12px 0">
+          Vas a cancelar la reserva de <strong>{{ usuario?.nombre }}</strong> para:
+        </p>
+        <div class="confirm-row-modal">
+          <span class="confirm-label">Clase</span>
+          <span>{{ modalCancelarReserva?.clase?.actividad }}</span>
+        </div>
+        <div class="confirm-row-modal">
+          <span class="confirm-label">Fecha</span>
+          <span>{{ formatFecha(modalCancelarReserva?.clase?.fecha) }} {{ modalCancelarReserva?.clase?.hora_inicio }} hs</span>
+        </div>
+        <div class="confirm-row-modal">
+          <span class="confirm-label">Tipo</span>
+          <span><span class="badge" :class="modalCancelarReserva?.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">{{ modalCancelarReserva?.tipo }}</span></span>
+        </div>
+        <div class="alert alert-warning" style="margin-top:12px" v-if="modalCancelarReserva?.tipo === 'abonado'">
+          Si el cliente lleva 2 cancelaciones, esta será la tercera y perderá el beneficio del 20% al abonar a mitad de mes.
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-danger" @click="ejecutarCancelarReserva" :disabled="cancelandoReserva">
+            {{ cancelandoReserva ? 'Cancelando...' : 'Sí, cancelar reserva' }}
+          </button>
+          <button class="btn btn-outline" @click="modalCancelarReserva = null">Volver</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal pago seña -->
     <div class="modal-overlay" v-if="pagoSeniaModal" @click.self="pagoSeniaModal = null">
       <div class="modal card">
@@ -381,12 +459,13 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth.js'
 import api from '../../api.js'
 
 const auth = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 
 const usuario = ref(null)
 const loading = ref(true)
@@ -433,6 +512,10 @@ const diasAbonoEmpl = computed(() => {
 const suspensiones = ref([])
 const metodoLevantamiento = ref('efectivo')
 const levantando = ref(null)
+const modalEliminar = ref(false)
+const eliminando = ref(false)
+const modalCancelarReserva = ref(null)
+const cancelandoReserva = ref(false)
 
 const pagoSeniaModal = ref(null)
 const metodoPagoSenia = ref('efectivo')
@@ -552,7 +635,8 @@ async function elegirHorarioAbonoEmpl(op) {
       params: {
         actividad_id: inscribirForm.value.actividad_id,
         dia_semana_num: abonoDiaEmpl.value.dia_semana_num,
-        hora_inicio: op.hora_inicio
+        hora_inicio: op.hora_inicio,
+        usuario_id: parseInt(route.params.id)  // para verificar beneficio y clases ya inscriptas
       }
     })
     detalleAbonoEmpl.value = data
@@ -601,6 +685,43 @@ async function inscribirCliente() {
     err.value = e.response?.data?.error || 'Error al inscribir'
   } finally {
     inscribiendo.value = false
+  }
+}
+
+async function ejecutarEliminar() {
+  eliminando.value = true
+  err.value = ''
+  try {
+    await api.post(`/usuarios/${route.params.id}/borrar`)
+    msg.value = 'Usuario eliminado correctamente'
+    modalEliminar.value = false
+    // Redirigir a la lista después de eliminar
+    setTimeout(() => router.push('/admin/usuarios'), 1500)
+  } catch (e) {
+    err.value = e.response?.data?.error || 'Error al eliminar'
+  } finally {
+    eliminando.value = false
+  }
+}
+
+function confirmarCancelarReserva(r) {
+  modalCancelarReserva.value = r
+}
+
+async function ejecutarCancelarReserva() {
+  cancelandoReserva.value = true
+  err.value = ''
+  try {
+    const uid = parseInt(route.params.id)
+    const { data } = await api.post(`/reservas/cliente/${uid}/cancelar/${modalCancelarReserva.value.id}`)
+    msg.value = data.mensaje || 'Reserva cancelada'
+    if (data.advertencia) msg.value += ' — ' + data.advertencia
+    modalCancelarReserva.value = null
+    await fetchReservas()
+  } catch (e) {
+    err.value = e.response?.data?.error || 'Error al cancelar reserva'
+  } finally {
+    cancelandoReserva.value = false
   }
 }
 
@@ -670,6 +791,8 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 .accion-btn:hover { border-color: var(--verde); color: var(--verde-claro); transform: translateY(-2px); }
+.accion-peligro { border-color: rgba(218,54,51,0.3) !important; }
+.accion-peligro:hover { border-color: var(--danger) !important; color: var(--danger) !important; }
 .accion-icon { font-size: 28px; }
 .clases-lista { display: flex; flex-direction: column; gap: 8px; }
 .clase-opcion {
@@ -701,6 +824,7 @@ onMounted(async () => {
 .abono-detalle-item { display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:6px;border:1px solid var(--border);font-size:13px; }
 .abono-detalle-item.incluida { background:rgba(63,185,80,0.05);border-color:rgba(63,185,80,0.2); }
 .abono-detalle-item.excluida { background:rgba(218,54,51,0.04);border-color:rgba(218,54,51,0.15);opacity:0.75; }
+.abono-detalle-item.ya-inscripto-item { background:rgba(21,101,192,0.06);border-color:rgba(21,101,192,0.2);opacity:0.8; }
 .abono-total-empl { display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(46,125,50,0.08);border-radius:8px;border:1px solid var(--verde);margin-top:8px;font-size:14px;font-weight:600; }
 .text-green { color:var(--success); }
 .text-warning { color:var(--warning); }

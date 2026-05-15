@@ -135,10 +135,21 @@ def crear_abono():
     """Crea múltiples reservas para todas las clases del mes de un mismo día/horario"""
     user_id = get_jwt_identity()
     data = request.get_json()
-    clases_ids = data.get('clases_ids', [])  # IDs de las clases a inscribir
+    clases_ids = data.get('clases_ids', [])
     monto_total = float(data.get('monto_total', 0))
     target_user_id = int(data.get('usuario_id', user_id))
     metodo_pago = data.get('metodo_pago', 'tarjeta_credito')
+    # El frontend puede indicar si aplica descuento, pero verificamos también aquí
+    aplicar_descuento = data.get('aplicar_descuento', False)
+
+    # Verificar si el usuario perdió el beneficio por 3+ cancelaciones
+    if aplicar_descuento:
+        reservas_abonado = Reserva.query.filter_by(
+            usuario_id=target_user_id, tipo='abonado'
+        ).all()
+        cancelaciones_totales = sum(r.cancelaciones_mes or 0 for r in reservas_abonado)
+        if cancelaciones_totales >= 3:
+            aplicar_descuento = False  # perdió el beneficio
 
     actor = Usuario.query.get(int(user_id))
     if str(target_user_id) != str(user_id) and actor.rol not in ('empleado', 'administrador'):
@@ -146,6 +157,8 @@ def crear_abono():
 
     reservas_creadas = []
     clases_espera = []
+    clases_ya_inscripto = []
+    clases_error = []
 
     for clase_id in clases_ids:
         resultado, extra, _ = crear_reserva_unica(
@@ -154,12 +167,18 @@ def crear_abono():
         )
         if resultado == 'espera' or resultado == 'espera_ya':
             clases_espera.append(clase_id)
-        elif resultado is not None:
+        elif resultado is None:
+            if 'ya existe' in str(extra).lower() or 'reserva activa' in str(extra).lower():
+                clases_ya_inscripto.append(clase_id)
+            else:
+                clases_error.append({'clase_id': clase_id, 'error': extra})
+        else:
             reservas_creadas.append(resultado.to_dict())
 
     return jsonify({
         'reservas_creadas': reservas_creadas,
         'clases_en_espera': clases_espera,
+        'clases_ya_inscripto': clases_ya_inscripto,
         'total_inscripto': len(reservas_creadas),
         'monto_total': monto_total
     }), 201
@@ -221,11 +240,13 @@ def cancelar_reserva(reserva_id):
     resultado = {'mensaje': 'Reserva cancelada'}
 
     if reserva.tipo == 'abonado':
-        reserva.cancelaciones_mes = (reserva.cancelaciones_mes or 0) + 1
-        if reserva.cancelaciones_mes == 2:
-            resultado['advertencia'] = 'Próxima cancelación perderás el beneficio del 20%'
-        if reserva.cancelaciones_mes >= 3:
+        cancelaciones_previas = reserva.cancelaciones_mes or 0
+        reserva.cancelaciones_mes = cancelaciones_previas + 1
+        if reserva.cancelaciones_mes == 3:
             resultado['perdida_beneficio'] = True
+            resultado['advertencia'] = '⚠️ Esta es tu tercera cancelación. Perdiste el beneficio del 20% de descuento por abonarte a mitad de mes.'
+        elif reserva.cancelaciones_mes == 2:
+            resultado['advertencia'] = '⚠️ Es tu segunda cancelación. Si cancelás una vez más perderás el beneficio del 20% de descuento al abonar a mitad de mes.'
         resultado['info'] = 'Si cancelaste con 48hs de anticipación tenés crédito para el mes siguiente'
     else:
         resultado['info'] = 'Si cancelaste con 24hs de anticipación recuperás la seña'
@@ -270,6 +291,46 @@ def registrar_pago(reserva_id):
         reserva.senia_pagada = True
     db.session.commit()
     return jsonify({'pago': pago.to_dict(), 'reserva': reserva.to_dict()}), 201
+
+
+@reservas_bp.route('/cliente/<int:uid>/cancelar/<int:reserva_id>', methods=['POST'])
+@jwt_required()
+def cancelar_reserva_cliente(uid, reserva_id):
+    """Empleado/admin cancela la reserva de un cliente específico"""
+    user_id = get_jwt_identity()
+    actor = Usuario.query.get(int(user_id))
+    if actor.rol not in ('empleado', 'administrador'):
+        return jsonify({'error': 'Sin permisos'}), 403
+
+    reserva = Reserva.query.get_or_404(reserva_id)
+    if reserva.usuario_id != uid:
+        return jsonify({'error': 'La reserva no pertenece a este cliente'}), 400
+    if reserva.estado != 'activa':
+        return jsonify({'error': 'La reserva no está activa'}), 400
+
+    reserva.estado = 'cancelada'
+    now = datetime.utcnow()
+    resultado = {'mensaje': 'Reserva cancelada por empleado/administrador'}
+
+    if reserva.tipo == 'abonado':
+        cancelaciones_previas = reserva.cancelaciones_mes or 0
+        reserva.cancelaciones_mes = cancelaciones_previas + 1
+        if reserva.cancelaciones_mes == 3:
+            resultado['perdida_beneficio'] = True
+            resultado['advertencia'] = 'El cliente acumula 3 cancelaciones. Perdió el beneficio del 20% de descuento al abonar a mitad de mes.'
+        elif reserva.cancelaciones_mes == 2:
+            resultado['advertencia'] = 'El cliente lleva 2 cancelaciones. Una más y pierde el beneficio del 20%.'
+
+    # Notificar lista de espera
+    lista = ListaEspera.query.filter_by(
+        clase_id=reserva.clase_id, estado='esperando', mes=now.month, anio=now.year
+    ).order_by(ListaEspera.fecha_inscripcion).first()
+    if lista:
+        lista.estado = 'notificado'
+        resultado['notificado_usuario_id'] = lista.usuario_id
+
+    db.session.commit()
+    return jsonify(resultado), 200
 
 
 @reservas_bp.route('/<int:reserva_id>/qr', methods=['GET'])

@@ -242,14 +242,21 @@
         <div v-if="loadingDetalle" class="loading-text">Calculando abono...</div>
         <div v-else-if="detalleAbono">
           <div v-if="detalleAbono.aplicar_descuento" class="alert alert-success" style="max-width:500px">
-            🎉 Estás entrando a mitad de mes con más de 1 clase disponible. ¡Cada clase tiene un 50% de descuento!
+            🎉 Estás entrando a mitad de mes con más de 1 clase disponible. ¡Tenés un 20% de descuento en cada clase!
+          </div>
+          <div v-else-if="!detalleAbono.usuario_tiene_beneficio && detalleAbono.total_disponibles > 1" class="alert alert-warning" style="max-width:500px">
+            ⚠️ Perdiste el beneficio del 20% de descuento por haber cancelado 3 o más clases de abono. Se cobra el precio completo.
           </div>
 
           <div class="abono-clases-lista">
             <div v-for="c in detalleAbono.clases" :key="c.clase_id" class="abono-clase-item"
-              :class="{ 'clase-incluida': c.incluida_en_abono, 'clase-excluida': !c.incluida_en_abono }">
+              :class="{
+                'clase-incluida': c.incluida_en_abono,
+                'clase-excluida': !c.incluida_en_abono,
+                'clase-ya-inscripto': c.ya_inscripto
+              }">
               <div style="display:flex;align-items:center;gap:10px">
-                <span class="clase-check">{{ c.incluida_en_abono ? '✓' : '✗' }}</span>
+                <span class="clase-check">{{ c.incluida_en_abono ? '✓' : (c.ya_inscripto ? '→' : '✗') }}</span>
                 <div>
                   <p style="font-weight:600;font-size:14px">{{ c.dia_semana }} {{ formatFecha(c.fecha) }}</p>
                   <p style="font-size:12px;color:var(--text-muted)">{{ c.hora_inicio }} hs</p>
@@ -257,11 +264,15 @@
               </div>
               <div style="text-align:right">
                 <p v-if="c.incluida_en_abono" style="font-weight:600;color:var(--verde-claro)">${{ c.precio_clase?.toLocaleString() }}</p>
+                <p v-else-if="c.ya_inscripto" style="font-size:12px;color:var(--azul-claro)">Ya inscripto</p>
                 <p v-else style="font-size:12px;color:var(--danger)">
                   {{ c.cancelada ? 'Cancelada' : 'Sin cupo' }}
                 </p>
               </div>
             </div>
+          </div>
+          <div v-if="detalleAbono.ya_inscripto_en?.length" class="alert alert-warning" style="margin-top:10px;font-size:13px">
+            ℹ️ Ya estás inscripto en {{ detalleAbono.ya_inscripto_en.length }} clase(s) de este turno. Solo se te cobrarán las clases nuevas.
           </div>
 
           <div class="confirm-card card" style="margin-top:16px">
@@ -273,7 +284,7 @@
             <div class="confirm-row"><span class="confirm-label">Precio por clase</span>
               <span class="confirm-value">
                 ${{ detalleAbono.precio_por_clase?.toLocaleString() }}
-                <span v-if="detalleAbono.aplicar_descuento" style="font-size:12px;color:var(--success)"> (50% desc.)</span>
+                <span v-if="detalleAbono.aplicar_descuento" style="font-size:12px;color:var(--success)"> (20% desc.)</span>
               </span>
             </div>
             <div class="confirm-row total-row">
@@ -526,11 +537,13 @@ async function cargarDetalleAbono() {
   paso.value = 4
   try {
     const op = seleccion.value.opcionAbono
+    const authStore = auth
     const { data } = await api.get('/clases/detalle-abono', {
       params: {
         actividad_id: seleccion.value.actividad.id,
         dia_semana_num: op.dia_semana_num,
-        hora_inicio: op.hora_inicio
+        hora_inicio: op.hora_inicio,
+        usuario_id: authStore.user?.id
       }
     })
     detalleAbono.value = data
@@ -565,7 +578,8 @@ async function confirmarPago() {
       const { data } = await api.post('/reservas/abono', {
         clases_ids: clasesIds,
         monto_total: detalleAbono.value.monto_total,
-        metodo_pago: 'tarjeta_credito'
+        metodo_pago: 'tarjeta_credito',
+        aplicar_descuento: detalleAbono.value.aplicar_descuento
       })
       resultadoExito.value = data
     } else {
@@ -700,6 +714,7 @@ onMounted(async () => {
 .abono-clase-item { display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:8px;border:1px solid var(--border); }
 .clase-incluida { background:rgba(63,185,80,0.06);border-color:rgba(63,185,80,0.2); }
 .clase-excluida { background:rgba(218,54,51,0.05);border-color:rgba(218,54,51,0.15);opacity:0.7; }
+.clase-ya-inscripto { background:rgba(21,101,192,0.08);border-color:rgba(21,101,192,0.25);opacity:0.8; }
 .clase-check { font-size:18px;width:24px;text-align:center; }
 .clase-incluida .clase-check { color:var(--success); }
 .clase-excluida .clase-check { color:var(--danger); }
