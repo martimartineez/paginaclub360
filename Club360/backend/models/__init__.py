@@ -64,9 +64,11 @@ class Clase(db.Model):
     __tablename__ = 'clases'
     id = db.Column(db.Integer, primary_key=True)
     actividad_id = db.Column(db.Integer, db.ForeignKey('actividades.id'), nullable=False)
+    turno_id = db.Column(db.Integer, db.ForeignKey('turnos.id'), nullable=True)  # turno origen
     fecha = db.Column(db.Date, nullable=False)           # fecha exacta de la clase
     hora_inicio = db.Column(db.Time, nullable=False)
     cupo_maximo = db.Column(db.Integer, nullable=False)
+    precio_clase = db.Column(db.Numeric(10, 2), nullable=True)  # puede sobreescribir el turno
     cancelada = db.Column(db.Boolean, default=False)     # cancelada por admin para este dia
     activa = db.Column(db.Boolean, default=True)
 
@@ -85,12 +87,23 @@ class Clase(db.Model):
             return DIAS_ES[self.fecha.weekday()]
         return ''
 
+    def get_precio(self):
+        # Precio propio > precio del turno > precio de la actividad
+        if self.precio_clase:
+            return float(self.precio_clase)
+        if self.turno and self.turno.precio_clase:
+            return float(self.turno.precio_clase)
+        if self.actividad:
+            return float(self.actividad.precio_clase)
+        return 0
+
     def to_dict(self):
         return {
             'id': self.id,
             'actividad_id': self.actividad_id,
+            'turno_id': self.turno_id,
             'actividad': self.actividad.nombre if self.actividad else None,
-            'precio_clase': float(self.actividad.precio_clase) if self.actividad else 0,
+            'precio_clase': self.get_precio(),
             'fecha': self.fecha.isoformat() if self.fecha else None,
             'dia_semana': self.dia_semana_str(),
             'hora_inicio': self.hora_inicio.strftime('%H:%M') if self.hora_inicio else None,
@@ -98,6 +111,41 @@ class Clase(db.Model):
             'cupos_disponibles': self.cupos_disponibles(),
             'cancelada': self.cancelada,
             'activa': self.activa
+        }
+
+
+
+class Turno(db.Model):
+    __tablename__ = 'turnos'
+    id = db.Column(db.Integer, primary_key=True)
+    actividad_id = db.Column(db.Integer, db.ForeignKey('actividades.id'), nullable=False)
+    dia_semana = db.Column(db.Integer, nullable=False)  # 0=lunes..5=sabado
+    hora_inicio = db.Column(db.Time, nullable=False)
+    cupo_maximo = db.Column(db.Integer, nullable=False)
+    precio_clase = db.Column(db.Numeric(10, 2), nullable=False)
+    activo = db.Column(db.Boolean, default=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+
+    actividad = db.relationship('Actividad', backref='turnos')
+    clases = db.relationship('Clase', backref='turno', lazy=True)
+
+    DIAS_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+    def dia_semana_str(self):
+        return self.DIAS_ES[self.dia_semana] if 0 <= self.dia_semana <= 5 else ''
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'actividad_id': self.actividad_id,
+            'actividad': self.actividad.nombre if self.actividad else None,
+            'dia_semana': self.dia_semana,
+            'dia_semana_str': self.dia_semana_str(),
+            'hora_inicio': self.hora_inicio.strftime('%H:%M') if self.hora_inicio else None,
+            'cupo_maximo': self.cupo_maximo,
+            'precio_clase': float(self.precio_clase),
+            'activo': self.activo,
+            'total_clases': len(self.clases)
         }
 
 

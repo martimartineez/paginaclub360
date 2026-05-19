@@ -8,16 +8,17 @@
         </router-link>
 
         <div class="nav-links">
+          <template v-if="auth.isAdmin || auth.isEmpleado"><router-link to="/clases" class="nav-link">Clases disponibles</router-link></template>
+          <template v-if="auth.isCliente"><router-link to="/clases" class="nav-link">Reservar clase</router-link></template>
           <template v-if="auth.isAuthenticated">
-            <router-link to="/clases" class="nav-link">Ver Clases Disponibles</router-link>
             <router-link to="/mis-reservas" class="nav-link">Mis Reservas</router-link>
             <template v-if="auth.isAdmin || auth.isEmpleado">
               <router-link to="/admin/usuarios" class="nav-link">Usuarios</router-link>
               <router-link to="/empleado/asistencia" class="nav-link">Asistencia QR</router-link>
             </template>
             <template v-if="auth.isAdmin">
-              <router-link to="/admin/clases" class="nav-link">Gestión Clases</router-link>
-              <router-link to="/admin/actividades" class="nav-link">Actividades</router-link>
+              <router-link to="/admin/turnos" class="nav-link">Gestión Turnos</router-link>
+              <!-- <router-link to="/admin/actividades" class="nav-link">Actividades</router-link> -->
             </template>
           </template>
         </div>

@@ -13,6 +13,7 @@ from routes.auth import auth_bp
 from routes.clases import clases_bp
 from routes.reservas import reservas_bp
 from routes.otros import usuarios_bp, actividades_bp, asistencia_bp, suspensiones_bp
+from routes.turnos import turnos_bp
 
 def create_app():
     app = Flask(__name__)
@@ -32,6 +33,7 @@ def create_app():
     app.register_blueprint(actividades_bp, url_prefix='/api/actividades')
     app.register_blueprint(asistencia_bp, url_prefix='/api/asistencia')
     app.register_blueprint(suspensiones_bp, url_prefix='/api/suspensiones')
+    app.register_blueprint(turnos_bp, url_prefix='/api/turnos')
 
     @app.route('/api/health')
     def health():
@@ -42,7 +44,7 @@ def create_app():
 
 def seed_data(app):
     with app.app_context():
-        from models import Usuario, Actividad, Clase
+        from models import Usuario, Actividad, Clase, Turno
         from datetime import date, time, timedelta
 
         if Usuario.query.first():
@@ -65,30 +67,28 @@ def seed_data(app):
         db.session.add_all([admin, emp, cli] + actividades)
         db.session.commit()
 
-        # Clases con fechas a partir de hoy
-        hoy = date.today()
-        # Buscar los próximos días de la semana para armar clases de ejemplo
-        def proximo_dia(dia_semana, desde=hoy, offset_semanas=0):
-            """Retorna la próxima fecha para un día de semana (0=lun..6=dom)"""
-            dias_hasta = (dia_semana - desde.weekday()) % 7
-            return desde + timedelta(days=dias_hasta + offset_semanas * 7)
+        # Crear turnos demo (generan clases automáticamente hasta fin de año)
+        from models import Turno
+        from routes.turnos import generar_clases_para_turno
 
-        clases_demo = [
-            # Fútbol - lunes y miércoles
-            Clase(actividad_id=1, fecha=proximo_dia(0), hora_inicio=time(8, 0), cupo_maximo=10),
-            Clase(actividad_id=1, fecha=proximo_dia(2), hora_inicio=time(10, 0), cupo_maximo=10),
-            Clase(actividad_id=1, fecha=proximo_dia(0, offset_semanas=1), hora_inicio=time(8, 0), cupo_maximo=10),
-            # Pádel - martes y jueves
-            Clase(actividad_id=2, fecha=proximo_dia(1), hora_inicio=time(9, 0), cupo_maximo=8),
-            Clase(actividad_id=2, fecha=proximo_dia(3), hora_inicio=time(18, 0), cupo_maximo=8),
-            # Básquet - viernes
-            Clase(actividad_id=3, fecha=proximo_dia(4), hora_inicio=time(20, 0), cupo_maximo=12),
-            # Vóley - sábado
-            Clase(actividad_id=4, fecha=proximo_dia(5), hora_inicio=time(10, 0), cupo_maximo=12),
+        turnos_demo = [
+            Turno(actividad_id=1, dia_semana=0, hora_inicio=time(8, 0), cupo_maximo=10, precio_clase=2500),   # Fútbol Lunes
+            Turno(actividad_id=1, dia_semana=2, hora_inicio=time(10, 0), cupo_maximo=10, precio_clase=2500),  # Fútbol Miércoles
+            Turno(actividad_id=2, dia_semana=1, hora_inicio=time(9, 0), cupo_maximo=8, precio_clase=3000),    # Pádel Martes
+            Turno(actividad_id=2, dia_semana=3, hora_inicio=time(18, 0), cupo_maximo=8, precio_clase=3000),   # Pádel Jueves
+            Turno(actividad_id=3, dia_semana=4, hora_inicio=time(20, 0), cupo_maximo=12, precio_clase=2000),  # Básquet Viernes
+            Turno(actividad_id=4, dia_semana=5, hora_inicio=time(10, 0), cupo_maximo=12, precio_clase=2000),  # Vóley Sábado
         ]
-        db.session.add_all(clases_demo)
+        db.session.add_all(turnos_demo)
+        db.session.flush()
+
+        total_clases = 0
+        for t in turnos_demo:
+            generadas, _ = generar_clases_para_turno(t)
+            total_clases += generadas
+
         db.session.commit()
-        print("✅ Datos de prueba cargados")
+        print(f"✅ Datos de prueba cargados: {len(turnos_demo)} turnos, {total_clases} clases generadas")
 
 
 if __name__ == '__main__':

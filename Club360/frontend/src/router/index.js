@@ -10,7 +10,7 @@ const routes = [
   { path: '/mis-reservas', component: () => import('../views/MisReservas.vue'), meta: { requiresAuth: true } },
   { path: '/perfil', component: () => import('../views/Perfil.vue'), meta: { requiresAuth: true } },
   // Admin
-  { path: '/admin/clases', component: () => import('../views/admin/GestionClases.vue'), meta: { requiresAuth: true, roles: ['administrador'] } },
+  { path: '/admin/turnos', component: () => import('../views/admin/GestionTurnos.vue'), meta: { requiresAuth: true, roles: ['administrador'] } },
   { path: '/admin/usuarios', component: () => import('../views/admin/GestionUsuarios.vue'), meta: { requiresAuth: true, roles: ['administrador', 'empleado'] } },
   { path: '/admin/actividades', component: () => import('../views/admin/GestionActividades.vue'), meta: { requiresAuth: true, roles: ['administrador'] } },
   { path: '/usuarios/:id', component: () => import('../views/admin/DetalleUsuario.vue'), meta: { requiresAuth: true, roles: ['administrador', 'empleado'] } },

@@ -2,8 +2,12 @@
   <div v-if="clase">
     <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
       <div>
-        <router-link to="/clases" class="back-link">← Volver a clases</router-link>
+        <router-link v-if="auth.isCliente" to="/clases" class="back-link">← Volver</router-link>
+      <router-link v-else to="/clases" class="back-link">← Volver a clases</router-link>
         <h2 style="margin-top:8px">{{ sportEmoji(clase.actividad) }} {{ clase.actividad }}</h2>
+        <p v-if="clase.turno_id" style="font-size:13px;color:var(--text-muted);margin-top:4px">
+          Turno recurrente · {{ clase.dia_semana }} {{ clase.hora_inicio }} hs
+        </p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
           <span class="dia-badge">{{ clase.dia_semana }}</span>
           <span class="dia-badge fecha-badge">{{ formatFecha(clase.fecha) }}</span>
