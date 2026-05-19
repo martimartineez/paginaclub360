@@ -103,12 +103,34 @@ function formatVenc() {
   form.value.vencimiento = v
 }
 
+function validarVencimiento(venc) {
+  if (venc.length !== 5) return false
+
+  const [mmStr, aaStr] = venc.split('/')
+  const mes = parseInt(mmStr, 10)
+  const anio = parseInt(aaStr, 10)
+
+  if (mes < 1 || mes > 12) return 'ingrese un mes valido'
+
+  // Comparar con la fecha actual
+  const hoy = new Date()
+  const anioCompleto = 2000 + anio
+  const mesActual = hoy.getMonth() + 1   // getMonth() devuelve 0-11
+  const anioActual = hoy.getFullYear()
+
+  if (anioCompleto < anioActual || (anioCompleto === anioActual && mes < mesActual)) {
+    return 'La tarjeta está vencida'
+  }
+
+  return null 
+}
 async function guardar() {
   errorLocal.value = ''
   const numero = form.value.numero.replace(/\s/g, '')
   if (numero.length < 13) { errorLocal.value = 'Número de tarjeta inválido'; return }
   if (!form.value.titular.trim()) { errorLocal.value = 'Ingresá el nombre del titular'; return }
-  if (form.value.vencimiento.length !== 5) { errorLocal.value = 'Vencimiento inválido (MM/AA)'; return }
+  const errorVenc = validarVencimiento(form.value.vencimiento)
+  if (errorVenc) { errorLocal.value = errorVenc; return }
   if (!form.value.cvv || form.value.cvv.length < 3) { errorLocal.value = 'CVV inválido'; return }
 
   loading.value = true
