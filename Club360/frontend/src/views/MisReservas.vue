@@ -21,7 +21,7 @@
         <div class="reserva-header">
           <span class="sport-emoji">{{ sportEmoji(r.clase?.actividad) }}</span>
           <div class="reserva-info">
-            <router-link :to="`/clases/${r.clase_id}`" style="text-decoration:none"><h3 style="color:inherit">{{ r.clase?.actividad }}</h3></router-link>
+            <h3 style="color:inherit">{{ r.clase?.actividad }}</h3>
             <p>{{ r.clase?.dia_semana }} — {{ r.clase?.hora_inicio }} hs</p>
           </div>
           <div class="reserva-badges">
@@ -59,13 +59,13 @@
           <img :src="`data:image/png;base64,${r.qr_code}`" class="qr-img" />
         </div>
 
-        <div class="reserva-actions" v-if="r.estado === 'activa'">
+        <!-- <div class="reserva-actions" v-if="r.estado === 'activa'">
           <button class="btn btn-outline btn-sm" @click="toggleQR(r)">
             {{ qrVisible === r.id ? '🔒 Ocultar QR' : '📲 Ver QR' }}
           </button>
           <button class="btn btn-outline btn-sm" @click="abrirPago(r)">💳 Pagar online</button>
           <button class="btn btn-danger btn-sm" @click="confirmarCancelar(r)">✕ Cancelar</button>
-        </div>
+        </div> -->  
       </div>
     </div>
 
