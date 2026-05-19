@@ -59,10 +59,10 @@
             </td>
             <td>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <button class="btn btn-outline btn-sm" @click="abrirEditar(t)">✏️ Editar</button>
-                <button v-if="t.activo" class="btn btn-danger btn-sm" @click="confirmarDesactivar(t)">
+                <button class="btn btn-outline btn-sm" @click="abrirEditar(t)">✏️ Editar </button>
+                <!-- <button v-if="t.activo" class="btn btn-danger btn-sm" @click="confirmarDesactivar(t)">
                   🗑 Desactivar
-                </button>
+                </button> -->
               </div>
             </td>
           </tr>

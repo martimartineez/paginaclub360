@@ -20,12 +20,12 @@
             </router-link>
           </template>
 
-          <template v-if="auth.isAuthenticated">
+          <template v-if="auth.isCliente">
             <router-link to="/mis-reservas" class="nav-link">
               Mis Reservas
             </router-link>
 
-            <template v-if="auth.isAdmin || auth.isEmpleado">
+            <!-- <template v-if="auth.isAdmin || auth.isEmpleado">
               <router-link to="/admin/usuarios" class="nav-link">
                 Usuarios
               </router-link>
@@ -33,7 +33,8 @@
               <router-link to="/empleado/asistencia" class="nav-link">
                 Asistencia QR
               </router-link>
-            </template>
+            </template> -->
+          </template>
 
             <template v-if="auth.isAdmin">
               <router-link to="/admin/turnos" class="nav-link">
@@ -42,7 +43,7 @@
 
               <!-- <router-link to="/admin/actividades" class="nav-link">Actividades</router-link> -->
             </template>
-          </template>
+          
         </div>
 
         <div class="nav-actions">

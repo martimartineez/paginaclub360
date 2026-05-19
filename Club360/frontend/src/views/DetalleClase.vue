@@ -20,9 +20,9 @@
         <button class="btn btn-secondary" @click="modalEditarCupo = true">
           ✏️ Editar cupo
         </button>
-        <button class="btn btn-danger" @click="confirmarCancelar = true">
+        <!-- <button class="btn btn-danger" @click="confirmarCancelar = true">
           🚫 Cancelar esta clase
-        </button>
+        </button> -->
       </div>
     </div>
 
