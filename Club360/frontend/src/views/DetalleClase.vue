@@ -347,7 +347,7 @@ async function guardarCupo() {
     modalEditarCupo.value = false
     await fetchClase()
   } catch (e) {
-    error.value = e.response?.data?.error || 'Error al actualizar cupo'
+    error.value = e.response?.data?.error
   } finally {
     guardandoCupo.value = false
   }
