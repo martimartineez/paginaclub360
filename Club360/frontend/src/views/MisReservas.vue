@@ -10,14 +10,15 @@
 
     <div v-if="loading" class="loading-text">Cargando...</div>
 
-    <div v-else-if="reservas.length === 0" class="empty-state">
+    <div v-else-if="reservas.length === 0 && listaEspera.length === 0" class="empty-state">
       <p style="font-size:48px">🎯</p>
       <p>No tenés reservas activas.</p>
       <router-link to="/clases" class="btn btn-primary" style="margin-top:16px">Ver clases disponibles</router-link>
     </div>
 
     <div v-else class="reservas-grid">
-      <div v-for="r in reservas" :key="r.id" class="reserva-card card" :class="{ 'cancelada': r.estado === 'cancelada' }">
+      <!-- Reservas normales -->
+      <div v-for="r in reservas" :key="'r-' + r.id" class="reserva-card card" :class="{ 'cancelada': r.estado === 'cancelada' }">
         <div class="reserva-header">
           <span class="sport-emoji">{{ sportEmoji(r.clase?.actividad) }}</span>
           <div class="reserva-info">
@@ -58,14 +59,40 @@
           <p class="qr-label">Tu código QR de asistencia</p>
           <img :src="`data:image/png;base64,${r.qr_code}`" class="qr-img" />
         </div>
+      </div>
 
-        <!-- <div class="reserva-actions" v-if="r.estado === 'activa'">
-          <button class="btn btn-outline btn-sm" @click="toggleQR(r)">
-            {{ qrVisible === r.id ? '🔒 Ocultar QR' : '📲 Ver QR' }}
-          </button>
-          <button class="btn btn-outline btn-sm" @click="abrirPago(r)">💳 Pagar online</button>
-          <button class="btn btn-danger btn-sm" @click="confirmarCancelar(r)">✕ Cancelar</button>
-        </div> -->  
+      <!-- Entradas en lista de espera -->
+      <div v-for="e in listaEspera" :key="'e-' + e.id" class="reserva-card card espera-card">
+        <div class="reserva-header">
+          <span class="sport-emoji">{{ sportEmoji(e.clase?.actividad) }}</span>
+          <div class="reserva-info">
+            <h3 style="color:inherit">{{ e.clase?.actividad }}</h3>
+            <p>{{ e.clase?.dia_semana }} — {{ e.clase?.hora_inicio }} hs · {{ formatFecha(e.clase?.fecha) }}</p>
+          </div>
+          <div class="reserva-badges">
+            <span class="badge" :class="tipoBadge(e.tipo_preferencia)">{{ e.tipo_preferencia === 'abonado' ? 'Mensual' : 'Clase suelta' }}</span>
+            <span class="badge badge-yellow">⏳ En lista de espera</span>
+          </div>
+        </div>
+
+        <div class="espera-info-banner">
+          <span>⏳ Estás en lista de espera para esta clase. Te avisaremos si se libera un cupo.</span>
+        </div>
+
+        <div class="reserva-detalles">
+          <div class="detalle">
+            <span class="label">Mes</span>
+            <span>{{ e.mes }}/{{ e.anio }}</span>
+          </div>
+          <div class="detalle">
+            <span class="label">Inscripto</span>
+            <span>{{ formatFecha(e.fecha_inscripcion?.slice(0,10)) }}</span>
+          </div>
+          <div class="detalle">
+            <span class="label">Costo</span>
+            <span class="text-warning">Sin cargo</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -125,6 +152,7 @@ import { ref, onMounted } from 'vue'
 import api from '../api.js'
 
 const reservas = ref([])
+const listaEspera = ref([])
 const loading = ref(false)
 const error = ref('')
 const mensaje = ref('')
@@ -142,6 +170,11 @@ function sportEmoji(nombre) {
 function tipoBadge(tipo) { return tipo === 'abonado' ? 'badge-green' : 'badge-blue' }
 function estadoBadge(estado) {
   return { 'activa': 'badge-green', 'cancelada': 'badge-red', 'suspendida': 'badge-yellow' }[estado] || 'badge-yellow'
+}
+function formatFecha(f) {
+  if (!f) return ''
+  const [y, m, d] = f.split('-')
+  return `${d}/${m}/${y}`
 }
 
 function toggleQR(r) {
@@ -193,8 +226,12 @@ async function ejecutarCancelacion() {
 async function fetchReservas() {
   loading.value = true
   try {
-    const { data } = await api.get('/reservas/')
-    reservas.value = data
+    const [resReservas, resEspera] = await Promise.all([
+      api.get('/reservas/'),
+      api.get('/reservas/mis-lista-espera')
+    ])
+    reservas.value = resReservas.data
+    listaEspera.value = resEspera.data
   } catch (e) {
     error.value = 'Error al cargar reservas'
   } finally {
@@ -209,6 +246,9 @@ onMounted(fetchReservas)
 .reservas-grid { display: flex; flex-direction: column; gap: 16px; }
 .reserva-card { transition: border-color 0.2s; }
 .reserva-card.cancelada { opacity: 0.5; }
+.espera-card { border-color: rgba(234,179,8,0.5) !important; background: rgba(234,179,8,0.04); }
+.espera-info-banner { background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.35); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--warning); margin-bottom: 14px; }
+.badge-yellow { background: rgba(234,179,8,0.15); color: #ca8a04; border: 1px solid rgba(234,179,8,0.4); }
 .reserva-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .sport-emoji { font-size: 32px; }
 .reserva-info { flex: 1; }

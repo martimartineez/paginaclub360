@@ -84,21 +84,29 @@ def get_fechas_disponibles():
 
 @clases_bp.route('/horarios-disponibles', methods=['GET'])
 def get_horarios_disponibles():
-    """Para abonos: combinaciones día+hora del mes actual, solo desde hoy"""
+    """Para abonos: combinaciones dia+hora del mes actual, solo desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
+    usuario_id = request.args.get('usuario_id', type=int)
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
     hoy = date.today()
     ultimo_dia_mes = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
 
-    # Solo clases desde hoy hasta fin del mes actual
     clases = Clase.query.filter_by(
         activa=True, cancelada=False, actividad_id=actividad_id
     ).filter(
         Clase.fecha >= hoy,
         Clase.fecha <= ultimo_dia_mes
     ).order_by(Clase.fecha, Clase.hora_inicio).all()
+
+    # Clases donde el usuario ya tiene reserva activa (no cuentan como disponibles para el)
+    clases_ya_inscripto = set()
+    if usuario_id:
+        reservas_usuario = Reserva.query.filter_by(
+            usuario_id=usuario_id, estado='activa'
+        ).all()
+        clases_ya_inscripto = {r.clase_id for r in reservas_usuario}
 
     opciones = {}
     for c in clases:
@@ -115,7 +123,8 @@ def get_horarios_disponibles():
             'clase_id': c.id,
             'fecha': c.fecha.isoformat(),
             'cupos_disponibles': c.cupos_disponibles(),
-            'cancelada': c.cancelada
+            'cancelada': c.cancelada,
+            'ya_inscripto': c.id in clases_ya_inscripto
         })
 
     return jsonify(list(opciones.values())), 200
@@ -170,6 +179,19 @@ def get_detalle_abono():
     total_clases = len(clases_mes)
     total_disponibles = len(clases_disponibles)
 
+    # Detectar en cuáles el usuario ya está en lista de espera
+    clases_en_espera_usuario = set()
+    if usuario_id:
+        from models import ListaEspera as LE
+        now = datetime.utcnow()
+        esperas = LE.query.filter_by(
+            usuario_id=usuario_id,
+            estado='esperando',
+            mes=now.month,
+            anio=now.year
+        ).all()
+        clases_en_espera_usuario = {e.clase_id for e in esperas}
+
     # Verificar si el usuario perdió el beneficio por 3+ cancelaciones de abono
     usuario_tiene_beneficio = True
     if usuario_id:
@@ -190,6 +212,8 @@ def get_detalle_abono():
     for c in clases_mes:
         ya_inscripto = c.id in clases_ya_inscripto
         disponible = not c.cancelada and c.cupos_disponibles() > 0 and not ya_inscripto
+        sin_cupo = not c.cancelada and c.cupos_disponibles() <= 0 and not ya_inscripto
+        en_espera = sin_cupo and c.id in clases_en_espera_usuario
         detalle_clases.append({
             'clase_id': c.id,
             'fecha': c.fecha.isoformat(),
@@ -199,6 +223,7 @@ def get_detalle_abono():
             'cancelada': c.cancelada,
             'ya_inscripto': ya_inscripto,
             'incluida_en_abono': disponible,
+            'en_espera': en_espera,
             'precio_clase': precio_por_clase if disponible else 0
         })
 

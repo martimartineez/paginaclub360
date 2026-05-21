@@ -127,8 +127,14 @@
             </div>
 
             <div v-if="seleccion.clase" class="seleccion-banner">
-              <span>✓ {{ seleccion.actividad?.nombre }} · {{ seleccion.fecha.dia_semana }} {{ formatFecha(seleccion.fecha.fecha) }} · {{ seleccion.clase.hora_inicio }} hs</span>
-              <button class="btn btn-primary" @click="paso = 4">Continuar →</button>
+              <span>
+                ✓ {{ seleccion.actividad?.nombre }} · {{ seleccion.fecha.dia_semana }} {{ formatFecha(seleccion.fecha.fecha) }} ·
+                <template v-if="seleccion.clase?.cupos_disponibles === 0">Lista de espera</template>
+                <template v-else>{{ seleccion.clase?.hora_inicio }} hs</template>
+              </span>
+              <button class="btn btn-primary" @click="paso = 4">
+                {{ seleccion.clase?.cupos_disponibles === 0 ? 'Inscribirme en la lista de espera →' : 'Continuar →' }}
+              </button>
             </div>
           </div>
         </div>
@@ -179,7 +185,7 @@
                 @click="elegirOpcionAbono(op)"
               >
                 <span class="horario-hora">{{ op.hora_inicio }}</span>
-                <span class="horario-cupo">{{ op.clases_mes.filter(c => c.cupos_disponibles > 0).length }} clase(s) con cupo</span>
+                <span class="horario-cupo">{{ op.clases_mes.filter(c => c.cupos_disponibles > 0 && !c.ya_inscripto).length }} clase(s) con cupo</span>
               </div>
             </div>
 
@@ -191,8 +197,8 @@
         </div>
       </div>
 
-      <!-- PASO 4a: Confirmar clase individual -->
-      <div v-if="paso === 4 && seleccion.tipo === 'no_abonado'" class="step-container">
+      <!-- PASO 4a: Confirmar clase individual (si hay cupo) -->
+      <div v-if="paso === 4 && seleccion.tipo === 'no_abonado' && seleccion.clase?.cupos_disponibles > 0" class="step-container">
         <button class="back-btn" @click="paso = 3">← Cambiar horario</button>
         <div class="step-header">
           <div class="step-num">Paso 4</div>
@@ -225,10 +231,33 @@
           </div>
         </div>
 
-        <button class="btn btn-primary" style="width:100%;max-width:440px;margin-top:16px" @click="paso = 5; fetchTarjetas()">
-          Ir a pagar ${{ montoPago === 'senia' ? Math.round(seleccion.actividad?.precio_clase * 0.5).toLocaleString() : seleccion.actividad?.precio_clase?.toLocaleString() }} →
-        </button>
+          <button class="btn btn-primary" style="width:100%;max-width:440px;margin-top:16px" @click="paso = 5; fetchTarjetas()">
+            Ir a pagar ${{ montoPago === 'senia' ? Math.round(seleccion.actividad?.precio_clase * 0.5).toLocaleString() : seleccion.actividad?.precio_clase?.toLocaleString() }} →
+          </button>
       </div>
+
+        <!-- PASO 4a-2: Inscribirme en lista de espera (si no hay cupo) -->
+        <div v-if="paso === 4 && seleccion.tipo === 'no_abonado' && seleccion.clase?.cupos_disponibles === 0" class="step-container">
+          <button class="back-btn" @click="paso = 3">← Cambiar horario</button>
+          <div class="step-header">
+            <div class="step-num">Paso 4</div>
+            <h2>Inscribirme en la lista de espera</h2>
+            <p>Te anotás en la lista de espera para esta clase. Te avisaremos si se libera un cupo.</p>
+          </div>
+
+          <div class="confirm-card card">
+            <div class="confirm-row"><span class="confirm-label">Deporte</span><span class="confirm-value">{{ sportEmoji(seleccion.actividad?.nombre) }} {{ seleccion.actividad?.nombre }}</span></div>
+            <div class="confirm-row"><span class="confirm-label">Fecha</span><span class="confirm-value">{{ seleccion.fecha?.dia_semana }}, {{ formatFecha(seleccion.fecha?.fecha) }}</span></div>
+            <div class="confirm-row"><span class="confirm-label">Horario</span><span class="confirm-value">Lista de espera</span></div>
+          </div>
+
+          <div style="margin-top:16px;max-width:440px">
+            <div class="alert alert-info" style="margin-bottom:12px">Si un cupo queda disponible serás notificado por email.</div>
+            <button class="btn btn-primary" style="width:100%" @click="inscribirEnListaEspera" :disabled="pagando">
+              {{ pagando ? 'Procesando...' : 'Inscribirme en la lista de espera' }}
+            </button>
+          </div>
+        </div>
 
       <!-- PASO 4b: Detalle del abono -->
       <div v-if="paso === 4 && seleccion.tipo === 'abonado'" class="step-container">
@@ -237,6 +266,7 @@
           <div class="step-num">Paso 4</div>
           <h2>Detalle de tu abono</h2>
           <p>{{ seleccion.actividad?.nombre }} · {{ detalleAbono?.dia_semana }} {{ detalleAbono?.hora_inicio }} hs</p>
+          <p>Si hay una clase sin cupo, serás anotado automaticamente en la lista de espera.</p>
         </div>
 
         <div v-if="loadingDetalle" class="loading-text">Calculando abono...</div>
@@ -252,11 +282,12 @@
             <div v-for="c in detalleAbono.clases" :key="c.clase_id" class="abono-clase-item"
               :class="{
                 'clase-incluida': c.incluida_en_abono,
-                'clase-excluida': !c.incluida_en_abono,
-                'clase-ya-inscripto': c.ya_inscripto
+                'clase-excluida': !c.incluida_en_abono && !c.en_espera && !c.ya_inscripto,
+                'clase-ya-inscripto': c.ya_inscripto,
+                'clase-en-espera': c.en_espera
               }">
               <div style="display:flex;align-items:center;gap:10px">
-                <span class="clase-check">{{ c.incluida_en_abono ? '✓' : (c.ya_inscripto ? '→' : '✗') }}</span>
+                <span class="clase-check">{{ c.incluida_en_abono ? '✓' : (c.ya_inscripto ? '→' : (c.en_espera ? '⏳' : '✗')) }}</span>
                 <div>
                   <p style="font-weight:600;font-size:14px">{{ c.dia_semana }} {{ formatFecha(c.fecha) }}</p>
                   <p style="font-size:12px;color:var(--text-muted)">{{ c.hora_inicio }} hs</p>
@@ -265,8 +296,9 @@
               <div style="text-align:right">
                 <p v-if="c.incluida_en_abono" style="font-weight:600;color:var(--verde-claro)">${{ c.precio_clase?.toLocaleString() }}</p>
                 <p v-else-if="c.ya_inscripto" style="font-size:12px;color:var(--azul-claro)">Ya inscripto</p>
+                <p v-else-if="c.en_espera" style="font-size:12px;color:var(--warning);font-weight:600">Lista de espera</p>
                 <p v-else style="font-size:12px;color:var(--danger)">
-                  {{ c.cancelada ? 'Cancelada' : 'Sin cupo' }}
+                  {{ c.cancelada ? 'Cancelada' : 'Sin cupo ' }}
                 </p>
               </div>
             </div>
@@ -277,10 +309,18 @@
 
           <div class="confirm-card card" style="margin-top:16px">
             <div class="confirm-row"><span class="confirm-label">Clases incluidas en el abono</span><span class="confirm-value">{{ detalleAbono.total_disponibles }}</span></div>
-            <div class="confirm-row" v-if="detalleAbono.total_clases_mes > detalleAbono.total_disponibles">
-              <span class="confirm-label" style="color:var(--warning)">Clases sin cupo (no incluidas)</span>
-              <span class="confirm-value">{{ detalleAbono.total_clases_mes - detalleAbono.total_disponibles }}</span>
-            </div>
+            <template v-if="detalleAbono.clases.some(c => c.en_espera)">
+              <div class="confirm-row">
+                <span class="confirm-label" style="color:var(--warning)">⏳ En lista de espera (no cobradas)</span>
+                <span class="confirm-value" style="color:var(--warning)">{{ detalleAbono.clases.filter(c => c.en_espera).length }}</span>
+              </div>
+            </template>
+            <template v-else-if="detalleAbono.total_clases_mes > detalleAbono.total_disponibles">
+              <div class="confirm-row">
+                <span class="confirm-label" style="color:var(--warning)">Clases sin cupo (no incluidas)</span>
+                <span class="confirm-value">{{ detalleAbono.total_clases_mes - detalleAbono.total_disponibles }}</span>
+              </div>
+            </template>
             <div class="confirm-row"><span class="confirm-label">Precio por clase</span>
               <span class="confirm-value">
                 ${{ detalleAbono.precio_por_clase?.toLocaleString() }}
@@ -294,9 +334,11 @@
           </div>
 
           <button class="btn btn-primary" style="width:100%;max-width:500px;margin-top:16px"
-            @click="paso = 5; fetchTarjetas()"
-            :disabled="detalleAbono.total_disponibles === 0">
-            {{ detalleAbono.total_disponibles === 0 ? 'Sin clases disponibles' : `Ir a pagar $${detalleAbono.monto_total?.toLocaleString()} →` }}
+            @click="detalleAbono.total_disponibles === 0 ? confirmarPago() : (paso = 5, fetchTarjetas())"
+            :disabled="!detalleAbono.clases?.some(c => !c.cancelada && !c.ya_inscripto) || pagando">
+            {{ pagando ? 'Procesando...' : detalleAbono.total_disponibles === 0
+              ? `Anotarme en lista de espera →`
+              : `Ir a pagar $${detalleAbono.monto_total?.toLocaleString()} →` }}
           </button>
         </div>
       </div>
@@ -382,19 +424,23 @@
 
       <!-- PASO 6: Éxito -->
       <div v-if="paso === 6" class="step-container success-container">
-        <div class="success-icon">✅</div>
-        <h2>¡{{ resultadoExito?.en_espera ? 'En lista de espera' : 'Reserva confirmada' }}!</h2>
+        <div class="success-icon">{{ (resultadoExito?.en_espera || resultadoExito?.total_inscripto === 0) ? '⏳' : '✅' }}</div>
+        <h2>¡{{ (resultadoExito?.en_espera || resultadoExito?.total_inscripto === 0) ? 'En lista de espera' : 'Reserva confirmada' }}!</h2>
         <p style="color:var(--text-muted)">
-          {{ resultadoExito?.en_espera
-            ? 'Te avisaremos cuando se libere un cupo.'
+          {{ resultadoExito?.en_espera || resultadoExito?.total_inscripto === 0
+            ? 'Te anotamos en lista de espera. Te avisaremos cuando se libere un cupo.'
             : resultadoExito?.pago_diferido
               ? 'Tu inscripción quedó registrada. Tenés hasta el día 10 para abonar desde Mis Pagos.'
               : 'Te enviamos los detalles por email.' }}
         </p>
-        <div v-if="!resultadoExito?.en_espera" class="confirm-card card" style="max-width:380px;margin:24px auto">
+        <div v-if="!resultadoExito?.en_espera && resultadoExito?.total_inscripto !== 0" class="confirm-card card" style="max-width:380px;margin:24px auto">
           <div class="confirm-row"><span class="confirm-label">Deporte</span><span class="confirm-value">{{ sportEmoji(seleccion.actividad?.nombre) }} {{ seleccion.actividad?.nombre }}</span></div>
           <div class="confirm-row"><span class="confirm-label">Tipo</span><span class="confirm-value">{{ seleccion.tipo === 'abonado' ? 'Abono mensual' : 'Clase suelta' }}</span></div>
           <div v-if="seleccion.tipo === 'abonado'" class="confirm-row"><span class="confirm-label">Clases inscripto</span><span class="confirm-value">{{ resultadoExito?.total_inscripto }}</span></div>
+          <div v-if="seleccion.tipo === 'abonado' && resultadoExito?.clases_en_espera?.length > 0" class="confirm-row">
+            <span class="confirm-label" style="color:var(--warning)">⏳ En lista de espera</span>
+            <span class="confirm-value" style="color:var(--warning)">{{ resultadoExito.clases_en_espera.length }} clase(s)</span>
+          </div>
           <div class="confirm-row total-row"><span class="confirm-label">Pagado</span><span class="confirm-value total-value">${{ montoFinal?.toLocaleString() }}</span></div>
         </div>
         <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
@@ -566,7 +612,7 @@ async function fetchHorariosAbono() {
   horariosAbono.value = []
   try {
     const { data } = await api.get('/clases/horarios-disponibles', {
-      params: { actividad_id: seleccion.value.actividad.id }
+      params: { actividad_id: seleccion.value.actividad.id, usuario_id: auth.user?.id }
     })
     horariosAbono.value = data
   } catch(e) { console.error(e) }
@@ -628,10 +674,15 @@ async function confirmarPago() {
         .filter(c => c.incluida_en_abono)
         .map(c => c.clase_id)
 
+      // También enviamos las sin cupo para que el backend las ponga en lista de espera
+      const clasesSinCupoIds = detalleAbono.value.clases
+        .filter(c => !c.incluida_en_abono && !c.ya_inscripto && !c.cancelada)
+        .map(c => c.clase_id)
+
       const pagoAhora = !esPeriodoGracia.value  // si NO es periodo gracia, paga ahora
 
       const { data } = await api.post('/reservas/abono', {
-        clases_ids: clasesIds,
+        clases_ids: [...clasesIds, ...clasesSinCupoIds],
         monto_total: detalleAbono.value.monto_total,
         metodo_pago: pagoAhora ? 'tarjeta_credito' : null,
         aplicar_descuento: detalleAbono.value.aplicar_descuento,
@@ -655,6 +706,27 @@ async function confirmarPago() {
     paso.value = 6
   } catch(e) {
     errorPago.value = e.response?.data?.error || 'Error al procesar el pago'
+  } finally {
+    pagando.value = false
+  }
+}
+
+async function inscribirEnListaEspera() {
+  pagando.value = true
+  errorPago.value = ''
+  try {
+    const { data } = await api.post('/reservas/', {
+      clase_id: seleccion.value.clase.id,
+      tipo: 'no_abonado'
+    })
+    if (data.en_espera) {
+      resultadoExito.value = { en_espera: true, mensaje: data.mensaje }
+    } else {
+      resultadoExito.value = data
+    }
+    paso.value = 6
+  } catch (e) {
+    errorPago.value = e.response?.data?.error || 'Error al inscribirse en la lista de espera'
   } finally {
     pagando.value = false
   }
@@ -771,9 +843,11 @@ onMounted(async () => {
 .clase-incluida { background:rgba(63,185,80,0.06);border-color:rgba(63,185,80,0.2); }
 .clase-excluida { background:rgba(218,54,51,0.05);border-color:rgba(218,54,51,0.15);opacity:0.7; }
 .clase-ya-inscripto { background:rgba(21,101,192,0.08);border-color:rgba(21,101,192,0.25);opacity:0.8; }
+.clase-en-espera { background:rgba(234,179,8,0.07);border-color:rgba(234,179,8,0.4); }
 .clase-check { font-size:18px;width:24px;text-align:center; }
 .clase-incluida .clase-check { color:var(--success); }
 .clase-excluida .clase-check { color:var(--danger); }
+.clase-en-espera .clase-check { color:var(--warning); }
 
 /* Paso 4 individual - pago opciones */
 .pago-opciones { max-width:440px;margin-top:20px; }

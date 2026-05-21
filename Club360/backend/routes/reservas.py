@@ -89,6 +89,16 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
     return reserva, monto, False
 
 
+@reservas_bp.route('/mis-lista-espera', methods=['GET'])
+@jwt_required()
+def get_mis_lista_espera():
+    user_id = int(get_jwt_identity())
+    entradas = ListaEspera.query.filter_by(
+        usuario_id=user_id, estado='esperando'
+    ).order_by(ListaEspera.fecha_inscripcion.desc()).all()
+    return jsonify([e.to_dict() for e in entradas]), 200
+
+
 @reservas_bp.route('/', methods=['GET'])
 @jwt_required()
 def get_mis_reservas():
