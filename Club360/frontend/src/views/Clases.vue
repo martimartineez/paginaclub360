@@ -35,7 +35,7 @@
           <div v-for="a in actividades" :key="a.id" class="deporte-card" @click="elegirDeporte(a)">
             <span class="deporte-icon">{{ sportEmoji(a.nombre) }}</span>
             <span class="deporte-nombre">{{ a.nombre }}</span>
-            <span class="deporte-precio">${{ a.precio_clase?.toLocaleString() }} / clase</span>
+            <!-- <span class="deporte-precio">${{ a.precio_clase?.toLocaleString() }} / clase</span> -->
           </div>
         </div>
       </div>
