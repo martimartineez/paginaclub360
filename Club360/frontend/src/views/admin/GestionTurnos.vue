@@ -90,6 +90,14 @@
         </div>
 
         <div class="input-group">
+          <label>Precio por clase ($)</label>
+          <input v-model.number="form.precio_clase" type="number" min="0" />
+          <p v-if="precioDefecto" style="font-size:11px;color:var(--text-muted);margin-top:4px">
+            Precio base de {{ actividadSeleccionada?.nombre }}: ${{ precioDefecto?.toLocaleString() }}
+          </p>
+        </div>
+
+        <div class="input-group">
           <label>Día de la semana</label>
           <select v-model="form.dia_semana">
             <option v-for="d in dias" :key="d.val" :value="d.val">{{ d.label }}</option>
@@ -106,13 +114,7 @@
           <input v-model.number="form.cupo_maximo" type="number" min="1" max="50" />
         </div>
 
-        <div class="input-group">
-          <label>Precio por clase ($)</label>
-          <input v-model.number="form.precio_clase" type="number" min="0" />
-          <p v-if="precioDefecto" style="font-size:11px;color:var(--text-muted);margin-top:4px">
-            Precio base de {{ actividadSeleccionada?.nombre }}: ${{ precioDefecto?.toLocaleString() }}
-          </p>
-        </div>
+        
 
         <!-- Preview del turno -->
         <div v-if="form.actividad_id && form.dia_semana !== ''" class="turno-preview">

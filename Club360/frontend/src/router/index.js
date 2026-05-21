@@ -8,6 +8,7 @@ const routes = [
   { path: '/clases', component: () => import('../views/Clases.vue') },
   { path: '/clases/:id', component: () => import('../views/DetalleClase.vue') },
   { path: '/mis-reservas', component: () => import('../views/MisReservas.vue'), meta: { requiresAuth: true } },
+  { path: '/mis-pagos', component: () => import('../views/MisPagos.vue'), meta: { requiresAuth: true, roles: ['cliente'] } },
   { path: '/perfil', component: () => import('../views/Perfil.vue'), meta: { requiresAuth: true } },
   // Admin
   { path: '/admin/turnos', component: () => import('../views/admin/GestionTurnos.vue'), meta: { requiresAuth: true, roles: ['administrador'] } },

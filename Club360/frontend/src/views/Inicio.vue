@@ -11,7 +11,7 @@
           <template v-if="auth.isCliente">
             <router-link to="/clases" class="btn btn-primary">Reservar Clase</router-link>
           </template>
-          <router-link to="/registro" class="btn btn-outline" v-if="!auth.isAuthenticated">Registrarse Gratis</router-link>
+          <router-link to="/registro" class="btn btn-outline" v-if="!auth.isAuthenticated">Registrarse</router-link>
         </div>
       </div>
       <div class="hero-sports">

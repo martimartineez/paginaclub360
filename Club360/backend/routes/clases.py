@@ -133,6 +133,8 @@ def get_detalle_abono():
         return jsonify({'error': 'Parámetros requeridos: actividad_id, dia_semana_num, hora_inicio'}), 400
 
     hoy = date.today()
+    _, dias_en_mes = calendar.monthrange(hoy.year, hoy.month)
+    mitad_mes = dias_en_mes // 2
     ultimo_dia_mes = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
     hora_obj = datetime.strptime(hora_inicio, '%H:%M').time()
 
@@ -156,7 +158,7 @@ def get_detalle_abono():
     clases_ya_inscripto = set()
     if usuario_id:
         reservas_usuario = Reserva.query.filter_by(
-            usuario_id=usuario_id, estado='activa', tipo='abonado'
+            usuario_id=usuario_id, estado='activa'#, tipo='abonado'
         ).all()
         clases_ya_inscripto = {r.clase_id for r in reservas_usuario}
 
@@ -179,7 +181,7 @@ def get_detalle_abono():
 
     # Descuento 20% por clase si es mitad de mes, hay más de 1 clase disponible
     # Y el usuario no perdió el beneficio
-    es_mitad_de_mes = hoy.day > 1
+    es_mitad_de_mes = hoy.day >= mitad_mes
     aplicar_descuento = es_mitad_de_mes and total_disponibles > 1 and usuario_tiene_beneficio
     precio_por_clase = precio_unitario * 0.8 if aplicar_descuento else precio_unitario
     monto_total = precio_por_clase * total_disponibles

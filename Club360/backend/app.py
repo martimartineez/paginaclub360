@@ -35,6 +35,14 @@ def create_app():
     app.register_blueprint(suspensiones_bp, url_prefix='/api/suspensiones')
     app.register_blueprint(turnos_bp, url_prefix='/api/turnos')
 
+    @app.cli.command("reset-db")
+    def reset_db_command():
+        """Borra la base de datos, la recrea y carga los datos de prueba."""
+        db.drop_all()
+        db.create_all()
+        seed_data(app)
+        print("✅ Base de datos reiniciada desde cero y con datos de prueba.")
+
     @app.route('/api/health')
     def health():
         return jsonify({'status': 'ok', 'app': 'Club 360'}), 200
@@ -67,28 +75,28 @@ def seed_data(app):
         db.session.add_all([admin, emp, cli] + actividades)
         db.session.commit()
 
-        # Crear turnos demo (generan clases automáticamente hasta fin de año)
-        from models import Turno
-        from routes.turnos import generar_clases_para_turno
+        # # Crear turnos demo (generan clases automáticamente hasta fin de año)
+        # from models import Turno
+        # from routes.turnos import generar_clases_para_turno
 
-        turnos_demo = [
-            Turno(actividad_id=1, dia_semana=0, hora_inicio=time(8, 0), cupo_maximo=10, precio_clase=2500),   # Fútbol Lunes
-            Turno(actividad_id=1, dia_semana=2, hora_inicio=time(10, 0), cupo_maximo=10, precio_clase=2500),  # Fútbol Miércoles
-            Turno(actividad_id=2, dia_semana=1, hora_inicio=time(9, 0), cupo_maximo=8, precio_clase=3000),    # Pádel Martes
-            Turno(actividad_id=2, dia_semana=3, hora_inicio=time(18, 0), cupo_maximo=8, precio_clase=3000),   # Pádel Jueves
-            Turno(actividad_id=3, dia_semana=4, hora_inicio=time(20, 0), cupo_maximo=12, precio_clase=2000),  # Básquet Viernes
-            Turno(actividad_id=4, dia_semana=5, hora_inicio=time(10, 0), cupo_maximo=12, precio_clase=2000),  # Vóley Sábado
-        ]
-        db.session.add_all(turnos_demo)
-        db.session.flush()
+        # turnos_demo = [
+        #     Turno(actividad_id=1, dia_semana=0, hora_inicio=time(8, 0), cupo_maximo=10, precio_clase=2500),   # Fútbol Lunes
+        #     Turno(actividad_id=1, dia_semana=2, hora_inicio=time(10, 0), cupo_maximo=10, precio_clase=2500),  # Fútbol Miércoles
+        #     Turno(actividad_id=2, dia_semana=1, hora_inicio=time(9, 0), cupo_maximo=8, precio_clase=3000),    # Pádel Martes
+        #     Turno(actividad_id=2, dia_semana=3, hora_inicio=time(18, 0), cupo_maximo=8, precio_clase=3000),   # Pádel Jueves
+        #     Turno(actividad_id=3, dia_semana=4, hora_inicio=time(20, 0), cupo_maximo=12, precio_clase=2000),  # Básquet Viernes
+        #     Turno(actividad_id=4, dia_semana=5, hora_inicio=time(10, 0), cupo_maximo=12, precio_clase=2000),  # Vóley Sábado
+        # ]
+        # db.session.add_all(turnos_demo)
+        # db.session.flush()
 
-        total_clases = 0
-        for t in turnos_demo:
-            generadas, _ = generar_clases_para_turno(t)
-            total_clases += generadas
+        # total_clases = 0
+        # for t in turnos_demo:
+        #     generadas, _ = generar_clases_para_turno(t)
+        #     total_clases += generadas
 
-        db.session.commit()
-        print(f"✅ Datos de prueba cargados: {len(turnos_demo)} turnos, {total_clases} clases generadas")
+        # db.session.commit()
+        # print(f"✅ Datos de prueba cargados: {len(turnos_demo)} turnos, {total_clases} clases generadas")
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Reserva, Clase, Usuario, ListaEspera, Suspension, Pago
+from models import db, Reserva, Clase, Usuario, ListaEspera, Suspension, Pago, Abono
 from datetime import datetime, date
 import qrcode, io, base64
 
@@ -17,8 +17,11 @@ def generar_qr(reserva_id):
     return base64.b64encode(buf.getvalue()).decode('utf-8')
 
 
+def es_periodo_gracia():
+    return 1 <= date.today().day <= 10
+
+
 def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, monto_pagar=None):
-    """Crea una reserva para una clase individual. Retorna (reserva, monto_a_pagar, en_espera)"""
     clase = Clase.query.get(clase_id)
     if not clase:
         return None, 'Clase no encontrada', None
@@ -27,13 +30,11 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
 
     now = datetime.utcnow()
 
-    # Verificar suspensión para no abonados
     if tipo == 'no_abonado':
         susp = Suspension.query.filter_by(usuario_id=usuario_id, activa=True, tipo='no_abonado').first()
         if susp:
             return None, 'Cliente suspendido como no abonado', None
 
-    # Verificar cupo → lista de espera
     if clase.cupos_disponibles() <= 0:
         ya = ListaEspera.query.filter_by(
             usuario_id=usuario_id, clase_id=clase_id,
@@ -52,17 +53,16 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
             return 'espera', lista.to_dict(), total_espera >= 10
         return 'espera_ya', None, None
 
-    # Verificar duplicado
     existente = Reserva.query.filter_by(usuario_id=usuario_id, clase_id=clase_id, estado='activa').first()
     if existente:
         return None, 'Ya existe una reserva activa para esta clase', None
 
-    precio = float(clase.actividad.precio_clase)
-    # monto_pagar puede ser 'total' o 'senia'
+    precio = clase.get_precio()
+
     if monto_pagar == 'total':
         monto = precio
         senia_pagada = True
-    else:  # senia por defecto
+    else:
         monto = precio * 0.5
         senia_pagada = False
 
@@ -75,7 +75,6 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
     db.session.flush()
     reserva.qr_code = generar_qr(reserva.id)
 
-    # Registrar pago si hay método
     if metodo_pago:
         pago = Pago(
             reserva_id=reserva.id, monto=monto,
@@ -88,32 +87,6 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
 
     db.session.commit()
     return reserva, monto, False
-
-
-def crear_reserva_interna(data, actor_id):
-    """Para inscripción desde empleado/admin — siempre efectivo"""
-    clase_id = int(data.get('clase_id'))
-    tipo = data.get('tipo', 'no_abonado')
-    target_user_id = int(data.get('usuario_id', actor_id))
-    monto_pagar = data.get('monto_pagar', 'senia')  # 'senia' o 'total'
-
-    actor = Usuario.query.get(int(actor_id))
-    if str(target_user_id) != str(actor_id) and actor.rol not in ('empleado', 'administrador'):
-        return jsonify({'error': 'Sin permisos'}), 403
-
-    resultado, extra, alerta = crear_reserva_unica(
-        target_user_id, clase_id, tipo, int(actor_id),
-        metodo_pago='efectivo', monto_pagar=monto_pagar
-    )
-
-    if resultado is None:
-        return jsonify({'error': extra}), 400
-    if resultado == 'espera':
-        return jsonify({'mensaje': 'Sin cupo. Cliente añadido a lista de espera.', 'en_espera': True, 'alerta_admin': alerta}), 200
-    if resultado == 'espera_ya':
-        return jsonify({'mensaje': 'Ya estaba en lista de espera', 'en_espera': True}), 200
-
-    return jsonify({'reserva': resultado.to_dict(), 'monto_pagado': extra}), 201
 
 
 @reservas_bp.route('/', methods=['GET'])
@@ -129,70 +102,272 @@ def get_mis_reservas():
     return jsonify([r.to_dict() for r in reservas]), 200
 
 
+@reservas_bp.route('/pagos-resumen', methods=['GET'])
+@jwt_required()
+def get_pagos_resumen():
+    user_id = int(get_jwt_identity())
+    hoy = date.today()
+
+    pendientes = []
+    pagados = []
+
+    # 1. Procesamos los Abonos Agrupados
+    abonos = Abono.query.filter_by(usuario_id=user_id).order_by(Abono.fecha_creacion.desc()).all()
+    for abono in abonos:
+        monto_total = float(abono.monto_total or 0)
+        monto_pagado = float(abono.monto_pagado or 0)
+        deuda = max(0, monto_total - monto_pagado)
+
+        # Usamos la primera clase del abono para extraer día y horario descriptivo en la interfaz
+        primera_reserva = abono.reservas[0] if abono.reservas else None
+        clase = primera_reserva.clase if primera_reserva else None
+
+        item = {
+            'abono_id': abono.id,
+            'tipo': 'abonado',
+            'actividad': abono.actividad.nombre if abono.actividad else 'Actividad',
+            'fecha_clase': clase.fecha.isoformat() if clase else None,
+            'dia_semana': clase.dia_semana_str() if clase else '',
+            'hora_inicio': clase.hora_inicio.strftime('%H:%M') if clase and clase.hora_inicio else '',
+            'monto_total': monto_total,
+            'monto_pagado': monto_pagado,
+            'deuda': deuda,
+            'mes': abono.mes,
+            'anio': abono.anio,
+            'fecha_creacion': abono.fecha_creacion.isoformat() if abono.fecha_creacion else None,
+            'vence_dia_10': deuda > 0 and hoy.day <= 10,
+            'deuda_label': f'Abono pendiente — ${deuda:,.0f}' if deuda > 0 else 'Pagado'
+        }
+
+        if deuda > 0:
+            pendientes.append(item)
+        else:
+            pagados.append(item)
+
+    # 2. Procesamos únicamente las Reservas Sueltas ('no_abonado')
+    reservas_sueltas = Reserva.query.filter_by(usuario_id=user_id, tipo='no_abonado').order_by(Reserva.fecha_creacion.desc()).all()
+    for r in reservas_sueltas:
+        if r.estado == 'cancelada' and float(r.monto_pagado or 0) == 0:
+            continue
+
+        monto_pagado = float(r.monto_pagado or 0)
+        monto_total = float(r.monto_total or 0)
+        deuda = max(0, monto_total - monto_pagado)
+        clase = r.clase
+
+        item = {
+            'reserva_id': r.id,
+            'clase_id': r.clase_id,
+            'tipo': r.tipo,
+            'estado': r.estado,
+            'actividad': clase.actividad.nombre if clase and clase.actividad else '',
+            'fecha_clase': clase.fecha.isoformat() if clase else None,
+            'dia_semana': clase.dia_semana_str() if clase else '',
+            'hora_inicio': clase.hora_inicio.strftime('%H:%M') if clase and clase.hora_inicio else '',
+            'monto_total': monto_total,
+            'monto_pagado': monto_pagado,
+            'deuda': deuda,
+            'senia_pagada': r.senia_pagada,
+            'mes': r.mes,
+            'anio': r.anio,
+            'fecha_creacion': r.fecha_creacion.isoformat() if r.fecha_creacion else None,
+            'qr_code': r.qr_code,
+        }
+
+        if r.estado == 'cancelada':
+            pagados.append(item)
+            continue
+
+        if not r.senia_pagada or deuda > 0:
+            if r.senia_pagada and deuda > 0:
+                item['deuda_label'] = f'Restante (50%) — ${deuda:,.0f}'
+            else:
+                item['deuda_label'] = f'Seña pendiente — ${deuda * 0.5:,.0f} o total ${monto_total:,.0f}'
+            pendientes.append(item)
+        else:
+            item['deuda_label'] = 'Pagado'
+            pagados.append(item)
+
+    return jsonify({'pendientes': pendientes, 'pagados': pagados}), 200
+
+
 @reservas_bp.route('/abono', methods=['POST'])
 @jwt_required()
 def crear_abono():
-    """Crea múltiples reservas para todas las clases del mes de un mismo día/horario"""
     user_id = get_jwt_identity()
     data = request.get_json()
     clases_ids = data.get('clases_ids', [])
     monto_total = float(data.get('monto_total', 0))
     target_user_id = int(data.get('usuario_id', user_id))
     metodo_pago = data.get('metodo_pago', 'tarjeta_credito')
-    # El frontend puede indicar si aplica descuento, pero verificamos también aquí
     aplicar_descuento = data.get('aplicar_descuento', False)
+    pago_diferido = data.get('pago_diferido', False)
 
-    # Verificar si el usuario perdió el beneficio por 3+ cancelaciones
     if aplicar_descuento:
-        reservas_abonado = Reserva.query.filter_by(
-            usuario_id=target_user_id, tipo='abonado'
-        ).all()
+        reservas_abonado = Reserva.query.filter_by(usuario_id=target_user_id, tipo='abonado').all()
         cancelaciones_totales = sum(r.cancelaciones_mes or 0 for r in reservas_abonado)
         if cancelaciones_totales >= 3:
-            aplicar_descuento = False  # perdió el beneficio
+            aplicar_descuento = False
 
     actor = Usuario.query.get(int(user_id))
     if str(target_user_id) != str(user_id) and actor.rol not in ('empleado', 'administrador'):
         return jsonify({'error': 'Sin permisos'}), 403
 
-    reservas_creadas = []
-    clases_espera = []
-    clases_ya_inscripto = []
-    clases_error = []
+    # Buscamos la primera clase válida para mapear la actividad correspondiente del Abono
+    primer_clase = None
+    if clases_ids:
+        primer_clase = Clase.query.get(clases_ids[0])
+    if not primer_clase:
+        return jsonify({'error': 'No se enviaron clases válidas para el abono.'}), 400
 
+    # 1. Creamos la entidad padre Abono
+    nuevo_abono = Abono(
+        usuario_id=target_user_id,
+        actividad_id=primer_clase.actividad_id,
+        mes=primer_clase.fecha.month,
+        anio=primer_clase.fecha.year,
+        monto_total=monto_total,
+        monto_pagado=0
+    )
+    db.session.add(nuevo_abono)
+    db.session.flush()
+
+    reservas_creadas = []
+    clases_en_espera = []
+    clases_ya_inscripto = []
+
+    # 2. Iteramos y asociamos las reservas hijas
     for clase_id in clases_ids:
-        resultado, extra, _ = crear_reserva_unica(
-            target_user_id, clase_id, 'abonado', int(user_id),
-            metodo_pago=metodo_pago, monto_pagar='total'
+        clase = Clase.query.get(clase_id)
+        if not clase or clase.cancelada:
+            continue
+
+        existente = Reserva.query.filter_by(usuario_id=target_user_id, clase_id=clase_id, estado='activa').first()
+        if existente:
+            clases_ya_inscripto.append(clase_id)
+            continue
+
+        if clase.cupos_disponibles() <= 0:
+            now = datetime.utcnow()
+            ya = ListaEspera.query.filter_by(
+                usuario_id=target_user_id, clase_id=clase_id,
+                estado='esperando', mes=now.month, anio=now.year
+            ).first()
+            if not ya:
+                lista = ListaEspera(
+                    usuario_id=target_user_id, clase_id=clase_id,
+                    tipo_preferencia='abonado', mes=now.month, anio=now.year
+                )
+                db.session.add(lista)
+            clases_en_espera.append(clase_id)
+            continue
+
+        precio = clase.get_precio()
+        if aplicar_descuento:
+            precio = precio * 0.8
+
+        reserva = Reserva(
+            usuario_id=target_user_id, clase_id=clase_id, tipo='abonado',
+            mes=clase.fecha.month, anio=clase.fecha.year,
+            monto_total=precio, monto_pagado=0, senia_pagada=True,
+            abono_id=nuevo_abono.id  # <-- Vinculada al abono
         )
-        if resultado == 'espera' or resultado == 'espera_ya':
-            clases_espera.append(clase_id)
-        elif resultado is None:
-            if 'ya existe' in str(extra).lower() or 'reserva activa' in str(extra).lower():
-                clases_ya_inscripto.append(clase_id)
-            else:
-                clases_error.append({'clase_id': clase_id, 'error': extra})
-        else:
-            reservas_creadas.append(resultado.to_dict())
+        db.session.add(reserva)
+        db.session.flush()
+        reserva.qr_code = generar_qr(reserva.id)
+        reservas_creadas.append(reserva)
+
+    # 3. Si no es diferido por periodo de gracia, se cobra el abono completo en el momento
+    if not pago_diferido and metodo_pago and reservas_creadas:
+        pago = Pago(
+            abono_id=nuevo_abono.id,
+            monto=monto_total,
+            metodo=metodo_pago,
+            tipo_pago='mensualidad',
+            registrado_por=int(user_id)
+        )
+        db.session.add(pago)
+        nuevo_abono.monto_pagado = monto_total
+
+    db.session.commit()
 
     return jsonify({
-        'reservas_creadas': reservas_creadas,
-        'clases_en_espera': clases_espera,
+        'reservas_creadas': [r.to_dict() for r in reservas_creadas],
+        'clases_en_espera': clases_en_espera,
         'clases_ya_inscripto': clases_ya_inscripto,
         'total_inscripto': len(reservas_creadas),
-        'monto_total': monto_total
+        'monto_total': monto_total,
+        'pago_diferido': pago_diferido,
+        'abono_id': nuevo_abono.id
     }), 201
+
+
+@reservas_bp.route('/<int:reserva_id>/pagar', methods=['POST'])
+@jwt_required()
+def registrar_pago(reserva_id):
+    user_id = get_jwt_identity()
+    reserva = Reserva.query.get_or_404(reserva_id)
+    user = Usuario.query.get(int(user_id))
+    data = request.get_json()
+
+    if reserva.usuario_id != int(user_id) and user.rol not in ('empleado', 'administrador'):
+        return jsonify({'error': 'Sin permisos'}), 403
+
+    metodo = data.get('metodo')
+    monto = float(data.get('monto', 0))
+    tipo_pago = data.get('tipo_pago', 'mensualidad')
+
+    if metodo == 'efectivo' and user.rol not in ('empleado', 'administrador'):
+        return jsonify({'error': 'El pago en efectivo debe registrarlo un empleado'}), 403
+
+    pago = Pago(
+        reserva_id=reserva_id, monto=monto, metodo=metodo,
+        tipo_pago=tipo_pago, registrado_por=int(user_id)
+    )
+    db.session.add(pago)
+    reserva.monto_pagado = float(reserva.monto_pagado or 0) + monto
+    if monto >= float(reserva.monto_total or 0) * 0.5:
+        reserva.senia_pagada = True
+    db.session.commit()
+    return jsonify({'pago': pago.to_dict(), 'reserva': reserva.to_dict()}), 201
+
+
+@reservas_bp.route('/abono/<int:abono_id>/pagar', methods=['POST'])
+@jwt_required()
+def registrar_pago_abono(abono_id):
+    """Nuevo endpoint exclusivo para pagar deudas globales de abono completo"""
+    user_id = get_jwt_identity()
+    abono = Abono.query.get_or_404(abono_id)
+    user = Usuario.query.get(int(user_id))
+    data = request.get_json()
+
+    if abono.usuario_id != int(user_id) and user.rol not in ('empleado', 'administrador'):
+        return jsonify({'error': 'Sin permisos'}), 403
+
+    metodo = data.get('metodo')
+    monto = float(data.get('monto', 0))
+
+    if metodo == 'efectivo' and user.rol not in ('empleado', 'administrador'):
+        return jsonify({'error': 'El pago en efectivo debe registrarlo un empleado'}), 403
+
+    pago = Pago(
+        abono_id=abono_id, monto=monto, metodo=metodo,
+        tipo_pago='mensualidad', registrado_por=int(user_id)
+    )
+    db.session.add(pago)
+    abono.monto_pagado = float(abono.monto_pagado or 0) + monto
+    db.session.commit()
+    return jsonify({'pago': pago.to_dict(), 'abono': abono.to_dict()}), 201
 
 
 @reservas_bp.route('/', methods=['POST'])
 @jwt_required()
 def crear_reserva():
-    """Reserva de clase individual por el cliente"""
     user_id = get_jwt_identity()
     data = request.get_json()
     clase_id = int(data.get('clase_id'))
     tipo = data.get('tipo', 'no_abonado')
-    monto_pagar = data.get('monto_pagar', 'senia')  # 'senia' o 'total'
+    monto_pagar = data.get('monto_pagar', 'senia')
     metodo_pago = data.get('metodo_pago', 'tarjeta_credito')
 
     resultado, extra, alerta = crear_reserva_unica(
@@ -251,7 +426,6 @@ def cancelar_reserva(reserva_id):
     else:
         resultado['info'] = 'Si cancelaste con 24hs de anticipación recuperás la seña'
 
-    # Notificar lista de espera
     lista = ListaEspera.query.filter_by(
         clase_id=reserva.clase_id, estado='esperando', mes=now.month, anio=now.year
     ).order_by(ListaEspera.fecha_inscripcion).first()
@@ -263,40 +437,9 @@ def cancelar_reserva(reserva_id):
     return jsonify(resultado), 200
 
 
-@reservas_bp.route('/<int:reserva_id>/pagar', methods=['POST'])
-@jwt_required()
-def registrar_pago(reserva_id):
-    user_id = get_jwt_identity()
-    reserva = Reserva.query.get_or_404(reserva_id)
-    user = Usuario.query.get(int(user_id))
-    data = request.get_json()
-
-    if reserva.usuario_id != int(user_id) and user.rol not in ('empleado', 'administrador'):
-        return jsonify({'error': 'Sin permisos'}), 403
-
-    metodo = data.get('metodo')
-    monto = float(data.get('monto', 0))
-    tipo_pago = data.get('tipo_pago', 'mensualidad')
-
-    if metodo == 'efectivo' and user.rol not in ('empleado', 'administrador'):
-        return jsonify({'error': 'El pago en efectivo debe registrarlo un empleado'}), 403
-
-    pago = Pago(
-        reserva_id=reserva_id, monto=monto, metodo=metodo,
-        tipo_pago=tipo_pago, registrado_por=int(user_id)
-    )
-    db.session.add(pago)
-    reserva.monto_pagado = float(reserva.monto_pagado or 0) + monto
-    if monto >= float(reserva.monto_total or 0) * 0.5:
-        reserva.senia_pagada = True
-    db.session.commit()
-    return jsonify({'pago': pago.to_dict(), 'reserva': reserva.to_dict()}), 201
-
-
 @reservas_bp.route('/cliente/<int:uid>/cancelar/<int:reserva_id>', methods=['POST'])
 @jwt_required()
 def cancelar_reserva_cliente(uid, reserva_id):
-    """Empleado/admin cancela la reserva de un cliente específico"""
     user_id = get_jwt_identity()
     actor = Usuario.query.get(int(user_id))
     if actor.rol not in ('empleado', 'administrador'):
@@ -317,11 +460,10 @@ def cancelar_reserva_cliente(uid, reserva_id):
         reserva.cancelaciones_mes = cancelaciones_previas + 1
         if reserva.cancelaciones_mes == 3:
             resultado['perdida_beneficio'] = True
-            resultado['advertencia'] = 'El cliente acumula 3 cancelaciones. Perdió el beneficio del 20% de descuento al abonar a mitad de mes.'
+            resultado['advertencia'] = 'El cliente acumula 3 cancelaciones. Perdió el beneficio del 20%.'
         elif reserva.cancelaciones_mes == 2:
             resultado['advertencia'] = 'El cliente lleva 2 cancelaciones. Una más y pierde el beneficio del 20%.'
 
-    # Notificar lista de espera
     lista = ListaEspera.query.filter_by(
         clase_id=reserva.clase_id, estado='esperando', mes=now.month, anio=now.year
     ).order_by(ListaEspera.fecha_inscripcion).first()

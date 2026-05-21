@@ -306,44 +306,91 @@
         <button class="back-btn" @click="paso = 4">← Volver</button>
         <div class="step-header">
           <div class="step-num">Paso 5</div>
-          <h2>Pago con tarjeta de crédito</h2>
-          <p>Monto: <strong style="color:var(--verde-claro)">${{ montoFinal?.toLocaleString() }}</strong></p>
+          <!-- Abono en periodo gracia (1-10): no paga ahora -->
+          <template v-if="seleccion.tipo === 'abonado' && esPeriodoGracia">
+            <h2>Confirmar inscripción</h2>
+            <p>Tu abono se registra ahora. Tenés hasta el <strong>día 10</strong> para abonar.</p>
+          </template>
+          <template v-else>
+            <h2>Pago con tarjeta de crédito</h2>
+            <p>Monto: <strong style="color:var(--verde-claro)">${{ montoFinal?.toLocaleString() }}</strong></p>
+          </template>
         </div>
 
         <div class="alert alert-error" v-if="errorPago">{{ errorPago }}</div>
 
-        <div v-if="tarjetas.length === 0" style="max-width:440px">
-          <div class="alert alert-warning">No tenés ninguna tarjeta registrada. Agregá una para continuar.</div>
-          <FormTarjeta label-boton="Guardar y continuar" :show-cancelar="false" @guardada="onTarjetaGuardada" />
-        </div>
-        <div v-else style="max-width:440px">
-          <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px">Seleccioná una tarjeta:</p>
-          <div v-for="t in tarjetas" :key="t.id" class="tarjeta-opcion"
-            :class="{ selected: tarjetaSeleccionada?.id === t.id }"
-            @click="tarjetaSeleccionada = t">
-            <div class="tarjeta-icon">💳</div>
-            <div>
-              <p style="font-weight:600">•••• •••• •••• {{ t.ultimos_4 }}</p>
-              <p style="font-size:12px;color:var(--text-muted)">{{ t.titular }} · Vence {{ t.vencimiento }}</p>
+        <!-- ABONO PERIODO GRACIA: solo confirmar, sin pagar -->
+        <div v-if="seleccion.tipo === 'abonado' && esPeriodoGracia" style="max-width:500px">
+          <div class="confirm-card card" style="margin-bottom:20px">
+            <div class="confirm-row">
+              <span class="confirm-label">Deporte</span>
+              <span class="confirm-value">{{ sportEmoji(seleccion.actividad?.nombre) }} {{ seleccion.actividad?.nombre }}</span>
             </div>
-            <div class="tarjeta-check" v-if="tarjetaSeleccionada?.id === t.id">✓</div>
+            <div class="confirm-row">
+              <span class="confirm-label">Turno</span>
+              <span class="confirm-value">{{ detalleAbono?.dia_semana }} {{ detalleAbono?.hora_inicio }} hs</span>
+            </div>
+            <div class="confirm-row">
+              <span class="confirm-label">Clases del mes</span>
+              <span class="confirm-value">{{ detalleAbono?.total_disponibles }}</span>
+            </div>
+            <div class="confirm-row total-row">
+              <span class="confirm-label">Total a pagar antes del día 10</span>
+              <span class="confirm-value total-value">${{ montoFinal?.toLocaleString() }}</span>
+            </div>
           </div>
-          <button v-if="!mostrarNuevaTarjeta" class="btn btn-outline btn-sm" style="margin-top:10px" @click="mostrarNuevaTarjeta = true">+ Usar otra tarjeta</button>
-          <div v-else style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-            <FormTarjeta label-boton="Guardar tarjeta" @guardada="onTarjetaGuardada" @cancelar="mostrarNuevaTarjeta = false" />
+          <div class="alert alert-warning" style="margin-bottom:16px">
+            📅 Estás en el período de pago (1 al 10 del mes). Tu inscripción quedará registrada y deberás abonar
+            <strong>${{ montoFinal?.toLocaleString() }}</strong> antes del día 10.
+            Podés pagar desde <strong>Mis Pagos</strong>.
           </div>
-          <button class="btn btn-primary" style="width:100%;margin-top:20px"
-            @click="confirmarPago" :disabled="!tarjetaSeleccionada || pagando">
-            {{ pagando ? 'Procesando...' : `Pagar $${montoFinal?.toLocaleString()}` }}
+          <button class="btn btn-primary" style="width:100%"
+            @click="confirmarPago" :disabled="pagando">
+            {{ pagando ? 'Procesando...' : 'Confirmar inscripción' }}
           </button>
         </div>
+
+        <!-- PAGO NORMAL CON TARJETA -->
+        <template v-else>
+          <div v-if="tarjetas.length === 0" style="max-width:440px">
+            <div class="alert alert-warning">No tenés ninguna tarjeta registrada. Agregá una para continuar.</div>
+            <FormTarjeta label-boton="Guardar y continuar" :show-cancelar="false" @guardada="onTarjetaGuardada" />
+          </div>
+          <div v-else style="max-width:440px">
+            <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px">Seleccioná una tarjeta:</p>
+            <div v-for="t in tarjetas" :key="t.id" class="tarjeta-opcion"
+              :class="{ selected: tarjetaSeleccionada?.id === t.id }"
+              @click="tarjetaSeleccionada = t">
+              <div class="tarjeta-icon">💳</div>
+              <div>
+                <p style="font-weight:600">•••• •••• •••• {{ t.ultimos_4 }}</p>
+                <p style="font-size:12px;color:var(--text-muted)">{{ t.titular }} · Vence {{ t.vencimiento }}</p>
+              </div>
+              <div class="tarjeta-check" v-if="tarjetaSeleccionada?.id === t.id">✓</div>
+            </div>
+            <button v-if="!mostrarNuevaTarjeta" class="btn btn-outline btn-sm" style="margin-top:10px" @click="mostrarNuevaTarjeta = true">+ Usar otra tarjeta</button>
+            <div v-else style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+              <FormTarjeta label-boton="Guardar tarjeta" @guardada="onTarjetaGuardada" @cancelar="mostrarNuevaTarjeta = false" />
+            </div>
+            <button class="btn btn-primary" style="width:100%;margin-top:20px"
+              @click="confirmarPago" :disabled="!tarjetaSeleccionada || pagando">
+              {{ pagando ? 'Procesando...' : `Pagar $${montoFinal?.toLocaleString()}` }}
+            </button>
+          </div>
+        </template>
       </div>
 
       <!-- PASO 6: Éxito -->
       <div v-if="paso === 6" class="step-container success-container">
         <div class="success-icon">✅</div>
         <h2>¡{{ resultadoExito?.en_espera ? 'En lista de espera' : 'Reserva confirmada' }}!</h2>
-        <p style="color:var(--text-muted)">{{ resultadoExito?.en_espera ? 'Te avisaremos cuando se libere un cupo.' : 'Te enviamos los detalles por email.' }}</p>
+        <p style="color:var(--text-muted)">
+          {{ resultadoExito?.en_espera
+            ? 'Te avisaremos cuando se libere un cupo.'
+            : resultadoExito?.pago_diferido
+              ? 'Tu inscripción quedó registrada. Tenés hasta el día 10 para abonar desde Mis Pagos.'
+              : 'Te enviamos los detalles por email.' }}
+        </p>
         <div v-if="!resultadoExito?.en_espera" class="confirm-card card" style="max-width:380px;margin:24px auto">
           <div class="confirm-row"><span class="confirm-label">Deporte</span><span class="confirm-value">{{ sportEmoji(seleccion.actividad?.nombre) }} {{ seleccion.actividad?.nombre }}</span></div>
           <div class="confirm-row"><span class="confirm-label">Tipo</span><span class="confirm-value">{{ seleccion.tipo === 'abonado' ? 'Abono mensual' : 'Clase suelta' }}</span></div>
@@ -442,6 +489,13 @@ const montoFinal = computed(() => {
   const precio = seleccion.value.actividad?.precio_clase || 0
   return montoPago.value === 'senia' ? Math.round(precio * 0.5) : precio
 })
+
+// Si hoy es entre 1 y 10 del mes, el abono se inscribe sin pagar (pago diferido hasta el 10)
+const esPeriodoGracia = computed(() => {
+  const dia = new Date().getDate()
+  return dia >= 1 && dia <= 10
+})
+
 
 // Agrupa horariosAbono por día para mostrar primero días, luego horarios
 const diasAbono = computed(() => {
@@ -570,20 +624,22 @@ async function confirmarPago() {
   errorPago.value = ''
   try {
     if (seleccion.value.tipo === 'abonado') {
-      // Inscribir a todas las clases disponibles del abono
       const clasesIds = detalleAbono.value.clases
         .filter(c => c.incluida_en_abono)
         .map(c => c.clase_id)
 
+      const pagoAhora = !esPeriodoGracia.value  // si NO es periodo gracia, paga ahora
+
       const { data } = await api.post('/reservas/abono', {
         clases_ids: clasesIds,
         monto_total: detalleAbono.value.monto_total,
-        metodo_pago: 'tarjeta_credito',
-        aplicar_descuento: detalleAbono.value.aplicar_descuento
+        metodo_pago: pagoAhora ? 'tarjeta_credito' : null,
+        aplicar_descuento: detalleAbono.value.aplicar_descuento,
+        pago_diferido: esPeriodoGracia.value
       })
-      resultadoExito.value = data
+      resultadoExito.value = { ...data, pago_diferido: esPeriodoGracia.value }
     } else {
-      // Clase individual
+      // Clase individual: siempre paga ahora
       const { data } = await api.post('/reservas/', {
         clase_id: seleccion.value.clase.id,
         tipo: 'no_abonado',

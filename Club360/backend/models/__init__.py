@@ -64,12 +64,12 @@ class Clase(db.Model):
     __tablename__ = 'clases'
     id = db.Column(db.Integer, primary_key=True)
     actividad_id = db.Column(db.Integer, db.ForeignKey('actividades.id'), nullable=False)
-    turno_id = db.Column(db.Integer, db.ForeignKey('turnos.id'), nullable=True)  # turno origen
-    fecha = db.Column(db.Date, nullable=False)           # fecha exacta de la clase
+    turno_id = db.Column(db.Integer, db.ForeignKey('turnos.id'), nullable=True)
+    fecha = db.Column(db.Date, nullable=False)
     hora_inicio = db.Column(db.Time, nullable=False)
     cupo_maximo = db.Column(db.Integer, nullable=False)
-    precio_clase = db.Column(db.Numeric(10, 2), nullable=True)  # puede sobreescribir el turno
-    cancelada = db.Column(db.Boolean, default=False)     # cancelada por admin para este dia
+    precio_clase = db.Column(db.Numeric(10, 2), nullable=True)
+    cancelada = db.Column(db.Boolean, default=False)
     activa = db.Column(db.Boolean, default=True)
 
     reservas = db.relationship('Reserva', backref='clase', lazy=True)
@@ -88,7 +88,6 @@ class Clase(db.Model):
         return ''
 
     def get_precio(self):
-        # Precio propio > precio del turno > precio de la actividad
         if self.precio_clase:
             return float(self.precio_clase)
         if self.turno and self.turno.precio_clase:
@@ -114,12 +113,11 @@ class Clase(db.Model):
         }
 
 
-
 class Turno(db.Model):
     __tablename__ = 'turnos'
     id = db.Column(db.Integer, primary_key=True)
     actividad_id = db.Column(db.Integer, db.ForeignKey('actividades.id'), nullable=False)
-    dia_semana = db.Column(db.Integer, nullable=False)  # 0=lunes..5=sabado
+    dia_semana = db.Column(db.Integer, nullable=False)
     hora_inicio = db.Column(db.Time, nullable=False)
     cupo_maximo = db.Column(db.Integer, nullable=False)
     precio_clase = db.Column(db.Numeric(10, 2), nullable=False)
@@ -149,11 +147,43 @@ class Turno(db.Model):
         }
 
 
+class Abono(db.Model):
+    __tablename__ = 'abonos'
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    actividad_id = db.Column(db.Integer, db.ForeignKey('actividades.id'), nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    monto_total = db.Column(db.Numeric(10, 2), nullable=False)
+    monto_pagado = db.Column(db.Numeric(10, 2), default=0)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+
+    actividad = db.relationship('Actividad', backref='abonos')
+    usuario = db.relationship('Usuario', backref='abonos')
+    reservas = db.relationship('Reserva', backref='abono', lazy=True)
+    pagos = db.relationship('Pago', backref='abono', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'usuario_id': self.usuario_id,
+            'actividad_id': self.actividad_id,
+            'actividad': self.actividad.nombre if self.actividad else None,
+            'mes': self.mes,
+            'anio': self.anio,
+            'monto_total': float(self.monto_total),
+            'monto_pagado': float(self.monto_pagado),
+            'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
+            'cantidad_clases': len(self.reservas)
+        }
+
+
 class Reserva(db.Model):
     __tablename__ = 'reservas'
     id = db.Column(db.Integer, primary_key=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     clase_id = db.Column(db.Integer, db.ForeignKey('clases.id'), nullable=False)
+    abono_id = db.Column(db.Integer, db.ForeignKey('abonos.id'), nullable=True)  # <-- Relación añadida
     tipo = db.Column(db.Enum('abonado', 'no_abonado', name='tipo_reserva_enum'), nullable=False)
     estado = db.Column(db.Enum('activa', 'cancelada', 'suspendida', name='estado_reserva_enum'), default='activa')
     mes = db.Column(db.Integer, nullable=False)
@@ -175,6 +205,7 @@ class Reserva(db.Model):
             'id': self.id,
             'usuario_id': self.usuario_id,
             'clase_id': self.clase_id,
+            'abono_id': self.abono_id,  # <-- Expuesto en el dict
             'clase': self.clase.to_dict() if self.clase else None,
             'tipo': self.tipo,
             'estado': self.estado,
@@ -219,7 +250,8 @@ class ListaEspera(db.Model):
 class Pago(db.Model):
     __tablename__ = 'pagos'
     id = db.Column(db.Integer, primary_key=True)
-    reserva_id = db.Column(db.Integer, db.ForeignKey('reservas.id'), nullable=True)
+    reserva_id = db.Column(db.Integer, db.ForeignKey('reservas.id'), nullable=True)  # <-- Ahora admite NULL
+    abono_id = db.Column(db.Integer, db.ForeignKey('abonos.id'), nullable=True)      # <-- Nueva columna
     monto = db.Column(db.Numeric(10, 2), nullable=False)
     metodo = db.Column(db.Enum('efectivo', 'tarjeta_credito', name='metodo_pago_enum'), nullable=False)
     tipo_pago = db.Column(db.Enum('senia', 'mensualidad', 'suspension', name='tipo_pago_enum'), nullable=False)
@@ -230,6 +262,7 @@ class Pago(db.Model):
         return {
             'id': self.id,
             'reserva_id': self.reserva_id,
+            'abono_id': self.abono_id,  # <-- Expuesto en el dict
             'monto': float(self.monto),
             'metodo': self.metodo,
             'tipo_pago': self.tipo_pago,
@@ -288,7 +321,7 @@ class TarjetaCredito(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     ultimos_4 = db.Column(db.String(4), nullable=False)
     titular = db.Column(db.String(150), nullable=False)
-    vencimiento = db.Column(db.String(7), nullable=False)  # MM/AAAA
+    vencimiento = db.Column(db.String(7), nullable=False)
     activa = db.Column(db.Boolean, default=True)
     fecha_agregada = db.Column(db.DateTime, default=datetime.utcnow)
 
