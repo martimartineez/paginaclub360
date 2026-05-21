@@ -107,7 +107,7 @@
     <div class="card" style="margin-bottom:24px" v-if="auth.isEmpleado || auth.isAdmin">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <h3 style="font-size:20px">👥 Inscriptos</h3>
-        <button class="btn btn-outline btn-sm" @click="fetchInscriptos">↻ Actualizar</button>
+        <!-- <button class="btn btn-outline btn-sm" @click="fetchInscriptos">↻ Actualizar</button> -->
       </div>
       <div v-if="loadingInscriptos" style="color:var(--text-muted);font-size:14px">Cargando...</div>
       <div v-else-if="inscriptos.length === 0" style="color:var(--text-muted);font-size:14px">Sin inscriptos aún.</div>
@@ -118,9 +118,9 @@
         <tbody>
           <tr v-for="r in inscriptos" :key="r.id">
             <td>
-              <router-link :to="`/usuarios/${r.usuario?.id}`" style="color:var(--verde-claro)">
+              <!-- <router-link :to="`/usuarios/${r.usuario?.id}`" style="color:var(--verde-claro)"> -->
                 {{ r.usuario?.nombre }} {{ r.usuario?.apellido }}
-              </router-link>
+              <!-- </router-link> -->
             </td>
             <td style="color:var(--text-muted)">{{ r.usuario?.dni }}</td>
             <td><span class="badge" :class="r.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">{{ r.tipo }}</span></td>
@@ -139,17 +139,17 @@
     <div class="card" v-if="auth.isAdmin">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <h3 style="font-size:20px">⏳ Lista de espera</h3>
+        <!-- <button class="btn btn-outline btn-sm" @click="fetchListaEspera">↻ Actualizar</button> -->
         <span v-if="listaEspera.length >= 10" class="badge badge-red">⚠️ Alta demanda</span>
       </div>
       <div v-if="loadingEspera" style="color:var(--text-muted);font-size:14px">Cargando...</div>
       <div v-else-if="listaEspera.length === 0" style="color:var(--text-muted);font-size:14px">Lista vacía.</div>
       <table v-else>
         <thead>
-          <tr><th>#</th><th>Cliente</th><th>Preferencia</th><th>Fecha inscripción</th><th>Estado</th></tr>
+          <tr><th>Cliente</th><th>Preferencia</th><th>Fecha inscripción</th><th>Estado</th></tr>
         </thead>
         <tbody>
           <tr v-for="(l, i) in listaEspera" :key="l.id">
-            <td>{{ i + 1 }}</td>
             <td>{{ l.usuario?.nombre }} {{ l.usuario?.apellido }}</td>
             <td><span class="badge" :class="l.tipo_preferencia === 'abonado' ? 'badge-green' : 'badge-blue'">{{ l.tipo_preferencia }}</span></td>
             <td style="font-size:12px;color:var(--text-muted)">{{ new Date(l.fecha_inscripcion).toLocaleDateString() }}</td>
@@ -293,6 +293,11 @@ async function fetchInscriptos() {
     loadingInscriptos.value = false
   }
 }
+
+onMounted(() => {
+  fetchInscriptos();
+  fetchListaEspera();
+});
 
 async function fetchListaEspera() {
   if (!auth.isAdmin) return
