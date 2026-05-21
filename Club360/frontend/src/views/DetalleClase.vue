@@ -173,7 +173,7 @@
             v-model.number="nuevoCupo"
             type="number"
             :min="clase.cupo_maximo - clase.cupos_disponibles"
-            max="50"
+            
           />
         </div>
         <div class="alert alert-warning" style="font-size:13px">
