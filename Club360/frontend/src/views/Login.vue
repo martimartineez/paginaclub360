@@ -45,7 +45,7 @@
         <router-link to="/registro">Registrate</router-link>
       </p>
 
-      <div class="demo-creds">
+      <!-- <div class="demo-creds">
         <p>Credenciales de prueba:</p>
 
         <div class="cred-list">
@@ -73,7 +73,7 @@
             cliente@club360.com / cliente123
           </div>
         </div>
-      </div>
+      </div> -->
     </div>
   </div>
 </template>
