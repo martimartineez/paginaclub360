@@ -33,8 +33,8 @@
 
         <div class="reserva-detalles">
           <div class="detalle">
-            <span class="label">Mes</span>
-            <span>{{ r.mes }}/{{ r.anio }}</span>
+            <span class="label">Fecha</span>
+            <span>{{ r.clase?.fecha }}</span>
           </div>
           <div class="detalle">
             <span class="label">Total</span>
@@ -81,8 +81,8 @@
 
         <div class="reserva-detalles">
           <div class="detalle">
-            <span class="label">Mes</span>
-            <span>{{ e.mes }}/{{ e.anio }}</span>
+            <span class="label">Fecha</span>
+            <span>{{ e.clase?.fecha}}</span>
           </div>
           <div class="detalle">
             <span class="label">Inscripto</span>
