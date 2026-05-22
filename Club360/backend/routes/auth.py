@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from datetime import date
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
 from models import db, Usuario
 
@@ -7,10 +8,20 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    required = ['nombre', 'apellido', 'dni', 'email', 'password']
+    required = ['nombre', 'apellido', 'dni', 'email', 'password', 'fecha_nacimiento']
     for field in required:
         if not data.get(field):
             return jsonify({'error': f'Campo {field} requerido'}), 400
+
+    # Validar mayoría de edad (18+)
+    try:
+        fnac = date.fromisoformat(data['fecha_nacimiento'])
+        hoy = date.today()
+        edad = hoy.year - fnac.year - ((hoy.month, hoy.day) < (fnac.month, fnac.day))
+        if edad < 18:
+            return jsonify({'error': 'Debés tener al menos 18 años para registrarte'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Fecha de nacimiento inválida'}), 400
 
     rol_pedido = data.get('rol', 'cliente')
 
@@ -52,6 +63,8 @@ def register():
         usuario_existente.apellido = data['apellido']
         usuario_existente.rol = rol_pedido
         usuario_existente.set_password(data['password'])
+        if data.get('fecha_nacimiento'):
+            usuario_existente.fecha_nacimiento = date.fromisoformat(data['fecha_nacimiento'])
         db.session.commit()
         user = usuario_existente
         if not user_id:
@@ -65,7 +78,8 @@ def register():
         apellido=data['apellido'],
         dni=data['dni'],
         email=data['email'],
-        rol=rol_pedido
+        rol=rol_pedido,
+        fecha_nacimiento=date.fromisoformat(data['fecha_nacimiento'])
     )
     user.set_password(data['password'])
     db.session.add(user)

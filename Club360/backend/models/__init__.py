@@ -16,6 +16,7 @@ class Usuario(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     rol = db.Column(db.Enum('cliente', 'empleado', 'administrador', name='rol_enum'), default='cliente', nullable=False)
     activo = db.Column(db.Boolean, default=True)
+    fecha_nacimiento = db.Column(db.Date, nullable=True)
     fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
 
     reservas = db.relationship('Reserva', backref='cliente', lazy=True, foreign_keys='Reserva.usuario_id')
@@ -36,7 +37,8 @@ class Usuario(db.Model):
             'email': self.email,
             'rol': self.rol,
             'activo': self.activo,
-            'fecha_registro': self.fecha_registro.isoformat() if self.fecha_registro else None
+            'fecha_registro': self.fecha_registro.isoformat() if self.fecha_registro else None,
+            'fecha_nacimiento': self.fecha_nacimiento.isoformat() if self.fecha_nacimiento else None
         }
 
 

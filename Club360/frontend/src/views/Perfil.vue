@@ -27,6 +27,10 @@
             <label>DNI</label>
             <input :value="auth.user?.dni" disabled style="opacity:0.4" />
           </div>
+          <div class="input-group" v-if="auth.user?.fecha_nacimiento">
+            <label>Fecha de nacimiento</label>
+            <input :value="formatFecha(auth.user?.fecha_nacimiento)" disabled style="opacity:0.4" />
+          </div>
           <!-- <div class="input-group">
             <label>Rol</label>
             <input :value="auth.user?.rol" disabled style="opacity:0.4;text-transform:capitalize" />
@@ -88,6 +92,10 @@
           <div class="info-row">
             <span class="label">DNI</span>
             <span>{{ auth.user?.dni }}</span>
+          </div>
+          <div class="info-row" v-if="auth.user?.fecha_nacimiento">
+            <span class="label">Nacimiento</span>
+            <span>{{ formatFecha(auth.user?.fecha_nacimiento) }}</span>
           </div>
           <div class="info-row" v-if="auth.isCliente">
             <span class="label">Tarjetas</span>
@@ -234,6 +242,12 @@ function cerrarModalPass() {
 function onTarjetaGuardada(tarjeta) {
   tarjetas.value.push(tarjeta)
   mostrarFormTarjeta.value = false
+}
+
+function formatFecha(iso) {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
 }
 
 async function eliminarTarjeta(id) {

@@ -79,6 +79,17 @@
             />
           </div>
 
+          <div class="input-group">
+            <label>Fecha de nacimiento</label>
+            <input
+              v-model="form.fecha_nacimiento"
+              type="date"
+              :max="maxFechaNacimiento"
+              required
+            />
+            <p v-if="errorEdad" class="field-error">{{ errorEdad }}</p>
+          </div>
+
           <button
             class="btn btn-primary"
             style="width: 100%"
@@ -125,7 +136,7 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth.js";
 import FormTarjeta from "../components/FormTarjeta.vue";
@@ -143,14 +154,37 @@ const form = ref({
   dni: "",
   email: "",
   password: "",
+  fecha_nacimiento: "",
 });
 
 const error = ref("");
 const loading = ref(false);
+const errorEdad = ref("");
+
+// Máximo: debe tener 18 años cumplidos
+const maxFechaNacimiento = computed(() => {
+  const hoy = new Date();
+  hoy.setFullYear(hoy.getFullYear() - 18);
+  return hoy.toISOString().split("T")[0];
+});
 
 async function handleRegister() {
   loading.value = true;
   error.value = "";
+  errorEdad.value = "";
+
+  // Validar edad mínima en frontend
+  if (form.value.fecha_nacimiento) {
+    const fnac = new Date(form.value.fecha_nacimiento);
+    const hoy = new Date();
+    const edad = hoy.getFullYear() - fnac.getFullYear() -
+      ((hoy.getMonth(), hoy.getDate()) < (fnac.getMonth(), fnac.getDate()) ? 1 : 0);
+    if (edad < 18) {
+      errorEdad.value = "Debés tener al menos 18 años para registrarte.";
+      loading.value = false;
+      return;
+    }
+  }
 
   try {
     await auth.register(form.value);
@@ -287,4 +321,5 @@ function saltarTarjeta() {
 .reg-step-line.active {
   background: var(--verde);
 }
+.field-error { font-size: 12px; color: var(--danger); margin-top: 4px; }
 </style>
