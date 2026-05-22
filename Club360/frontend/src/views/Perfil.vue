@@ -27,10 +27,10 @@
             <label>DNI</label>
             <input :value="auth.user?.dni" disabled style="opacity:0.4" />
           </div>
-          <div class="input-group">
+          <!-- <div class="input-group">
             <label>Rol</label>
             <input :value="auth.user?.rol" disabled style="opacity:0.4;text-transform:capitalize" />
-          </div>
+          </div> -->
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <button class="btn btn-primary" @click="guardar" :disabled="guardando">
               {{ guardando ? 'Guardando...' : 'Guardar cambios' }}
@@ -83,7 +83,7 @@
         <div class="avatar-perfil">{{ auth.user?.nombre?.charAt(0) }}</div>
         <h3>{{ auth.user?.nombre }} {{ auth.user?.apellido }}</h3>
         <p class="email-text">{{ auth.user?.email }}</p>
-        <span class="badge" :class="rolBadge">{{ auth.user?.rol }}</span>
+        <!-- <span class="badge" :class="rolBadge">{{ auth.user?.rol }}</span> -->
         <div class="info-extra">
           <div class="info-row">
             <span class="label">DNI</span>
