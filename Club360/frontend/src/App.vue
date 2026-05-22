@@ -54,7 +54,7 @@
             <router-link to="/perfil" class="nav-user">
               <span class="avatar">{{ auth.user?.nombre?.charAt(0) }}</span>
               <span class="user-name">{{ auth.user?.nombre }}</span>
-              <span class="badge" :class="rolBadge">{{ auth.user?.rol }}</span>
+              <!-- <span class="badge" :class="rolBadge">{{ auth.user?.rol }}</span> -->
             </router-link>
 
             <button class="btn btn-outline btn-sm" @click="logout">
