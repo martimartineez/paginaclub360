@@ -39,7 +39,7 @@
         <thead>
           <tr>
             <th>Actividad</th><th>Día</th><th>Hora</th><th>Cupo</th>
-            <th>Precio/clase</th><th>Clases generadas</th><th>Estado</th><th>Acciones</th>
+            <th>Precio/clase</th><th>Clases generadas</th><th>Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -57,14 +57,14 @@
                 {{ t.activo ? 'Activo' : 'Inactivo' }}
               </span>
             </td>
-            <td>
+            <!-- <td>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <button class="btn btn-outline btn-sm" @click="abrirEditar(t)">✏️ Editar </button>
-                <!-- <button v-if="t.activo" class="btn btn-danger btn-sm" @click="confirmarDesactivar(t)">
+                <button class="btn btn-outline btn-sm" @click="abrirEditar(t)">✏️ Editar  </button>
+                <button v-if="t.activo" class="btn btn-danger btn-sm" @click="confirmarDesactivar(t)">
                   🗑 Desactivar
-                </button> -->
+                </button>
               </div>
-            </td>
+            </td> -->
           </tr>
         </tbody>
       </table>
