@@ -14,7 +14,8 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401) {
+    // Si el error es 401 Y la petición NO fue hacia el endpoint de login...
+    if (err.response?.status === 401 && !err.config.url.includes('/login')) {
       localStorage.removeItem('token')
       window.location.href = '/login'
     }
