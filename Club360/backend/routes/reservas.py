@@ -299,6 +299,11 @@ def crear_abono():
         db.session.add(pago)
         nuevo_abono.monto_pagado = monto_total
 
+        for r in reservas_creadas:
+            r.monto_pagado = r.monto_total
+            # Opcional: si considerás que ya está saldado el total
+            r.senia_pagada = True
+
     db.session.commit()
 
     return jsonify({
@@ -366,6 +371,11 @@ def registrar_pago_abono(abono_id):
     )
     db.session.add(pago)
     abono.monto_pagado = float(abono.monto_pagado or 0) + monto
+
+    if abono.monto_pagado >= abono.monto_total:
+        for r in abono.reservas:
+            r.monto_pagado = r.monto_total
+
     db.session.commit()
     return jsonify({'pago': pago.to_dict(), 'abono': abono.to_dict()}), 201
 
