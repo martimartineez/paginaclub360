@@ -1,28 +1,35 @@
 <template>
-  <div>
+<div>
     <div class="page-header">
       <h2>MI PERFIL</h2>
     </div>
 
     <div class="perfil-layout">
-      <!-- Datos personales -->
       <div>
         <div class="card" style="margin-bottom:20px">
           <h3>Datos personales</h3>
+          
           <div class="alert alert-success" v-if="msg">{{ msg }}</div>
           <div class="alert alert-error" v-if="err">{{ err }}</div>
+          
           <div class="input-group">
             <label>Nombre</label>
-            <input v-model="form.nombre" />
+            <input v-model="form.nombre" placeholder="Tu nombre" />
+            <p v-if="errorNombre" class="field-error">{{ errorNombre }}</p>
           </div>
+          
           <div class="input-group">
             <label>Apellido</label>
-            <input v-model="form.apellido" />
+            <input v-model="form.apellido" placeholder="Tu apellido" />
+            <p v-if="errorApellido" class="field-error">{{ errorApellido }}</p>
           </div>
+          
           <div class="input-group">
             <label>Email</label>
-            <input v-model="form.email" type="email" />
+            <input v-model="form.email" type="email" placeholder="tu@email.com" />
+            <p v-if="errorEmail" class="field-error">{{ errorEmail }}</p>
           </div>
+
           <div class="input-group">
             <label>DNI</label>
             <input :value="auth.user?.dni" disabled style="opacity:0.4" />
@@ -31,12 +38,13 @@
             <label>Fecha de nacimiento</label>
             <input :value="formatFecha(auth.user?.fecha_nacimiento)" disabled style="opacity:0.4" />
           </div>
-          <!-- <div class="input-group">
-            <label>Rol</label>
-            <input :value="auth.user?.rol" disabled style="opacity:0.4;text-transform:capitalize" />
-          </div> -->
+
           <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn btn-primary" @click="guardar" :disabled="guardando">
+            <button 
+              class="btn btn-primary" 
+              @click="guardar" 
+              :disabled="guardando || !isFormValido"
+            >
               {{ guardando ? 'Guardando...' : 'Guardar cambios' }}
             </button>
             <button class="btn btn-outline" @click="modalPass = true">
@@ -174,6 +182,38 @@ const verActual = ref(false), verNueva = ref(false), verConfirmar = ref(false)
 const tarjetas = ref([])
 const mostrarFormTarjeta = ref(false)
 
+const errorNombre = computed(() => {
+  if (!form.value.nombre) return ''
+  if (form.value.nombre.trim() === '') return 'El nombre no puede ser solo espacios'
+  if (/\d/.test(form.value.nombre)) return 'El nombre no debe contener números'
+  return ''
+})
+
+const errorApellido = computed(() => {
+  if (!form.value.apellido) return ''
+  if (form.value.apellido.trim() === '') return 'El apellido no puede ser solo espacios'
+  if (/\d/.test(form.value.apellido)) return 'El apellido no debe contener números'
+  return ''
+})
+
+const errorEmail = computed(() => {
+  if (!form.value.email) return ''
+  const emailRegex = /^[^@\s]+@[^@\s]+$/
+  if (!emailRegex.test(form.value.email)) return 'Debes colocar texto antes del @, incluir el @, y texto luego del @'
+  return ''
+})
+
+const isFormValido = computed(() => {
+  return (
+    form.value.nombre.trim() !== '' &&
+    form.value.apellido.trim() !== '' &&
+    form.value.email.trim() !== '' &&
+    !errorNombre.value &&
+    !errorApellido.value &&
+    !errorEmail.value
+  )
+})
+
 const rolBadge = computed(() => ({
   'badge-green': auth.user?.rol === 'administrador',
   'badge-blue': auth.user?.rol === 'empleado',
@@ -212,6 +252,7 @@ async function fetchTarjetas() {
 }
 
 async function guardar() {
+  if (!isFormValido.value) return
   guardando.value = true; err.value = ''
   try {
     await api.put(`/usuarios/${auth.user.id}`, form.value)
@@ -220,6 +261,17 @@ async function guardar() {
   } catch (e) { err.value = e.response?.data?.error || 'Error al guardar' }
   finally { guardando.value = false }
 }
+
+// viejo
+// async function guardar() {
+//   guardando.value = true; err.value = ''
+//   try {
+//     await api.put(`/usuarios/${auth.user.id}`, form.value)
+//     await auth.refreshUser()
+//     msg.value = 'Perfil actualizado correctamente'
+//   } catch (e) { err.value = e.response?.data?.error || 'Error al guardar' }
+//   finally { guardando.value = false }
+// }
 
 async function cambiarPass() {
   if (passForm.value.nueva_password !== passForm.value.confirmar) return
@@ -281,4 +333,5 @@ async function eliminarTarjeta(id) {
 .strength-bar { height: 4px; border-radius: 2px; transition: all 0.3s; margin-bottom: 4px; }
 .strength-label { font-size: 12px; }
 @media (max-width: 768px) { .perfil-layout { grid-template-columns: 1fr; } }
+.field-error { font-size: 12px; color: var(--danger); margin-top: 4px; }
 </style>
