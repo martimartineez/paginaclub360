@@ -8,7 +8,7 @@
       <button class="btn btn-primary" @click="abrirCrear">+ Nuevo Turno</button>
     </div>
 
-    <div class="alert alert-error" v-if="error">{{ error }}</div>
+    <!-- <div class="alert alert-error" v-if="error">{{ error }}</div> -->
     <div class="alert alert-success" v-if="mensaje">{{ mensaje }}</div>
 
     <div class="card" style="margin-bottom:20px;padding:16px">
@@ -72,6 +72,10 @@
           Se generarán clases automáticamente para cada semana hasta el 31/12, saltando feriados nacionales.
         </p>
 
+        <div class="alert alert-error" v-if="error" style="margin-bottom: 16px;">
+          {{ error }}
+        </div>
+
         <form @submit.prevent="guardar">
           <div class="input-group">
             <label>Actividad</label>
@@ -124,7 +128,7 @@
           </div>
 
           <div style="display:flex;gap:10px;margin-top:8px">
-            <button class="btn btn-primary" type="submit" :disabled="guardando || !isFormValido">
+            <button class="btn btn-primary" type="submit" :disabled="guardando || !isFormValido ">
               {{ guardando ? 'Creando...' : 'Crear turno y generar clases' }}
             </button>
             <button class="btn btn-outline" type="button" @click="formModal = false">Cancelar</button>
@@ -146,7 +150,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '../../api.js'
 
 const turnos = ref([])
@@ -247,6 +251,11 @@ const isFormValido = computed(() => {
     !errorCupo.value
   )
 })
+
+// watch(form, () => {
+//   error.value = ''
+// }, { deep: true })
+
 
 // --- FUNCIONES ---
 
