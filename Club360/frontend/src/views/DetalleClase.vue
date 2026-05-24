@@ -15,15 +15,11 @@
           <span v-if="clase.cancelada" class="badge badge-red">Cancelada</span>
         </div>
       </div>
-      <!-- Botones admin: editar cupo y cancelar clase -->
       <div v-if="auth.isAdmin && !clase.cancelada" style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-secondary" @click="modalEditarCupo = true">
+        <button class="btn btn-secondary" @click="abrirEditarCupo">
           ✏️ Editar cupo
         </button>
-        <!-- <button class="btn btn-danger" @click="confirmarCancelar = true">
-          🚫 Cancelar esta clase
-        </button> -->
-      </div>
+        </div>
     </div>
 
     <div class="alert alert-error" v-if="error">{{ error }}</div>
@@ -32,7 +28,6 @@
       Esta clase fue cancelada por el administrador.
     </div>
 
-    <!-- Info general -->
     <div class="grid-3" style="margin-bottom:24px">
       <div class="card stat-card">
         <span class="stat-num">{{ clase.cupos_disponibles }}</span>
@@ -48,7 +43,6 @@
       </div>
     </div>
 
-    <!-- QR: solo para cliente con reserva activa -->
     <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && miReserva">
       <h3 style="font-size:20px;margin-bottom:16px">📲 Tu QR de asistencia</h3>
       <div v-if="miReserva.estado === 'activa'" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
@@ -83,7 +77,6 @@
       </div>
     </div>
 
-    <!-- Sin reserva: botón para reservar -->
     <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && !miReserva && !clase.cancelada">
       <h3 style="font-size:20px;margin-bottom:12px">Reservar esta clase</h3>
       <div v-if="reservando">
@@ -103,12 +96,10 @@
       </button>
     </div>
 
-    <!-- Lista de inscriptos: empleado y admin -->
     <div class="card" style="margin-bottom:24px" v-if="auth.isEmpleado || auth.isAdmin">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <h3 style="font-size:20px">👥 Inscriptos</h3>
-        <!-- <button class="btn btn-outline btn-sm" @click="fetchInscriptos">↻ Actualizar</button> -->
-      </div>
+        </div>
       <div v-if="loadingInscriptos" style="color:var(--text-muted);font-size:14px">Cargando...</div>
       <div v-else-if="inscriptos.length === 0" style="color:var(--text-muted);font-size:14px">Sin inscriptos aún.</div>
       <table v-else>
@@ -118,10 +109,8 @@
         <tbody>
           <tr v-for="r in inscriptos" :key="r.id">
             <td>
-              <!-- <router-link :to="`/usuarios/${r.usuario?.id}`" style="color:var(--verde-claro)"> -->
-                {{ r.usuario?.nombre }} {{ r.usuario?.apellido }}
-              <!-- </router-link> -->
-            </td>
+              {{ r.usuario?.nombre }} {{ r.usuario?.apellido }}
+              </td>
             <td style="color:var(--text-muted)">{{ r.usuario?.dni }}</td>
             <td><span class="badge" :class="r.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">{{ r.tipo }}</span></td>
             <td>
@@ -135,11 +124,9 @@
       </table>
     </div>
 
-    <!-- Lista de espera: solo admin -->
     <div class="card" v-if="auth.isAdmin">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <h3 style="font-size:20px">⏳ Lista de espera</h3>
-        <!-- <button class="btn btn-outline btn-sm" @click="fetchListaEspera">↻ Actualizar</button> -->
         <span v-if="listaEspera.length >= 10" class="badge badge-red">⚠️ Alta demanda</span>
       </div>
       <div v-if="loadingEspera" style="color:var(--text-muted);font-size:14px">Cargando...</div>
@@ -159,7 +146,6 @@
       </table>
     </div>
 
-    <!-- Modal editar cupo -->
     <div class="modal-overlay" v-if="modalEditarCupo" @click.self="modalEditarCupo = false">
       <div class="modal card">
         <h3>✏️ Editar cupo</h3>
@@ -167,28 +153,32 @@
           Cupo actual: <strong>{{ clase.cupo_maximo }}</strong> ·
           Inscriptos: <strong>{{ clase.cupo_maximo - clase.cupos_disponibles }}</strong>
         </p>
-        <div class="input-group">
-          <label>Nuevo cupo máximo</label>
-          <input
-            v-model.number="nuevoCupo"
-            type="number"
-            :min="clase.cupo_maximo - clase.cupos_disponibles"
-            
-          />
-        </div>
-        <div class="alert alert-warning" style="font-size:13px">
-          No podés bajar el cupo por debajo de los inscriptos actuales ({{ clase.cupo_maximo - clase.cupos_disponibles }}).
-        </div>
-        <div style="display:flex;gap:10px;margin-top:12px">
-          <button class="btn btn-primary" @click="guardarCupo" :disabled="guardandoCupo">
-            {{ guardandoCupo ? 'Guardando...' : 'Guardar' }}
-          </button>
-          <button class="btn btn-outline" @click="modalEditarCupo = false">Cancelar</button>
-        </div>
+        
+        <form @submit.prevent="guardarCupo">
+          <div class="input-group">
+            <label>Nuevo cupo máximo</label>
+            <input
+              v-model.number="nuevoCupo"
+              type="number"
+              :min="clase.cupo_maximo - clase.cupos_disponibles"
+            />
+            <p v-if="errorCupo" class="field-error">{{ errorCupo }}</p>
+          </div>
+          
+          <!-- <div class="alert alert-warning" style="font-size:13px">
+            No podés bajar el cupo por debajo de los inscriptos actuales ({{ clase.cupo_maximo - clase.cupos_disponibles }}).
+          </div> -->
+          
+          <div style="display:flex;gap:10px;margin-top:12px">
+            <button type="submit" class="btn btn-primary" :disabled="guardandoCupo || !isCupoValido">
+              {{ guardandoCupo ? 'Guardando...' : 'Guardar' }}
+            </button>
+            <button type="button" class="btn btn-outline" @click="modalEditarCupo = false">Cancelar</button>
+          </div>
+        </form>
       </div>
     </div>
 
-    <!-- Modal confirmar cancelar clase -->
     <div class="modal-overlay" v-if="confirmarCancelar" @click.self="confirmarCancelar = false">
       <div class="modal card">
         <h3>🚫 Cancelar clase</h3>
@@ -205,7 +195,6 @@
       </div>
     </div>
 
-    <!-- Modal confirmar cancelar reserva -->
     <div class="modal-overlay" v-if="confirmarCancelarReserva" @click.self="confirmarCancelarReserva = false">
       <div class="modal card">
         <h3>⚠️ Cancelar reserva</h3>
@@ -231,7 +220,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import api from '../api.js'
@@ -259,6 +248,29 @@ const guardandoCupo = ref(false)
 const confirmarCancelarReserva = ref(false)
 const cancelandoReserva = ref(false)
 
+// --- VALIDACIONES COMPUTED PARA EL CUPO ---
+
+const errorCupo = computed(() => {
+  if (!clase.value) return ''
+  if (nuevoCupo.value === '' || nuevoCupo.value === null) return 'El cupo es requerido'
+  
+  const inscriptosActuales = clase.value.cupo_maximo - clase.value.cupos_disponibles
+
+  if (nuevoCupo.value < 0) {
+    return 'El cupo no puede ser menor a 0'
+  }
+  if (nuevoCupo.value < inscriptosActuales) {
+    return `No podés bajar el cupo por debajo de los inscriptos actuales (${inscriptosActuales})`
+  }
+  return ''
+})
+
+const isCupoValido = computed(() => {
+  return errorCupo.value === ''
+})
+
+// --- FUNCIONES ---
+
 function sportEmoji(nombre) {
   const map = { 'Fútbol': '⚽', 'Pádel': '🎾', 'Básquet': '🏀', 'Vóley': '🏐' }
   return map[nombre] || '🏃'
@@ -270,15 +282,20 @@ function formatFecha(fechaStr) {
   return `${d}/${m}/${y}`
 }
 
+function abrirEditarCupo() {
+  nuevoCupo.value = clase.value.cupo_maximo
+  modalEditarCupo.value = true
+}
+
 async function fetchClase() {
   loadingClase.value = true
   try {
     const { data } = await api.get(`/clases/${route.params.id}`)
     clase.value = data
+    nuevoCupo.value = data.cupo_maximo // Seteado de forma segura dentro del try
   } catch (e) {
     error.value = 'No se pudo cargar la clase'
   } finally {
-    if (data) nuevoCupo.value = data.cupo_maximo
     loadingClase.value = false
   }
 }
@@ -293,11 +310,6 @@ async function fetchInscriptos() {
     loadingInscriptos.value = false
   }
 }
-
-onMounted(() => {
-  fetchInscriptos();
-  fetchListaEspera();
-});
 
 async function fetchListaEspera() {
   if (!auth.isAdmin) return
@@ -339,6 +351,7 @@ async function reservar(tipo) {
 }
 
 async function guardarCupo() {
+  if (!isCupoValido.value) return
   guardandoCupo.value = true
   error.value = ''
   try {
@@ -405,4 +418,5 @@ onMounted(async () => {
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { max-width: 460px; width: 100%; }
 .modal h3 { font-size: 22px; margin-bottom: 8px; }
+.field-error { font-size: 12px; color: var(--danger); margin-top: 4px; }
 </style>

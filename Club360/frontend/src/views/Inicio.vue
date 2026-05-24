@@ -50,11 +50,11 @@
       <h2>¿Cómo funciona?</h2>
       <div class="grid-2" style="margin-top:20px">
         <div class="card feature">
-          <h3>🗓️ Inscripción Mensual</h3>
+          <h3>🗓️ Abono Mensual</h3>
           <p>Abonás el mes completo y tenés tu lugar asegurado cada semana. Con <strong>20% de descuento</strong> si te sumás a mitad de mes.</p>
         </div>
         <div class="card feature">
-          <h3>🎯 Clase Individual</h3>
+          <h3>🎯 Clase Suelta</h3>
           <p>Reservá clases sueltas pagando una seña del <strong>50%</strong>. Flexible y sin compromisos.</p>
         </div>
         <div class="card feature">
