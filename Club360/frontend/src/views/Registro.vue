@@ -15,7 +15,6 @@
         </p>
       </div>
 
-      <!-- Indicador de pasos -->
       <div class="reg-steps">
         <div
           class="reg-step"
@@ -36,7 +35,6 @@
         </div>
       </div>
 
-      <!-- PASO 1 -->
       <div v-if="paso === 1">
         <div class="alert alert-error" v-if="error">{{ error }}</div>
 
@@ -52,10 +50,12 @@
               <input v-model="form.apellido" placeholder="Pérez" required />
             </div>
           </div>
+          <p v-if="errorNombre" class="field-error">{{ errorNombre }}</p>
 
           <div class="input-group">
             <label>DNI</label>
             <input v-model="form.dni" placeholder="12345678" required />
+            <p v-if="errorDni" class="field-error">{{ errorDni }}</p>
           </div>
 
           <div class="input-group">
@@ -66,6 +66,7 @@
               placeholder="tu@email.com"
               required
             />
+            <p v-if="errorEmail" class="field-error">{{ errorEmail }}</p>
           </div>
 
           <div class="input-group">
@@ -73,10 +74,11 @@
             <input
               v-model="form.password"
               type="password"
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo 8 caracteres"
               required
-              minlength="6"
+              minlength="8"
             />
+            <p v-if="errorPassword" class="field-error">{{ errorPassword }}</p>
           </div>
 
           <div class="input-group">
@@ -87,13 +89,13 @@
               :max="maxFechaNacimiento"
               required
             />
-            <p v-if="errorEdad" class="field-error">{{ errorEdad }}</p>
+            <p v-if="errorFecha" class="field-error">{{ errorFecha }}</p>
           </div>
 
           <button
             class="btn btn-primary"
             style="width: 100%"
-            :disabled="loading"
+            :disabled="loading || !isFormValido"
             type="submit"
           >
             {{ loading ? "Registrando..." : "Continuar →" }}
@@ -101,7 +103,6 @@
         </form>
       </div>
 
-      <!-- PASO 2 -->
       <div v-if="paso === 2">
         <div class="alert alert-success" style="margin-bottom: 16px">
           ✅ Cuenta creada. Ahora agregá tu tarjeta para poder pagar clases
@@ -159,9 +160,94 @@ const form = ref({
 
 const error = ref("");
 const loading = ref(false);
-const errorEdad = ref("");
 
-// Máximo: debe tener 18 años cumplidos
+// --- VALIDACIONES EN TIEMPO REAL (COMPUTED) ---
+
+// 1. Error de Nombre/Apellido con números o puro espacio
+const errorNombre = computed(() => {
+  if (!form.value.nombre && !form.value.apellido) return "";
+  
+  if (form.value.nombre.length > 0 && form.value.nombre.trim() === "") {
+    return "El nombre no puede estar compuesto solo por espacios vacíos";
+  }
+  
+  if (form.value.apellido.length > 0 && form.value.apellido.trim() === "") {
+    return "El apellido no puede estar compuesto solo por espacios vacíos";
+  }
+
+  const tieneNumeros = /\d/;
+  if (tieneNumeros.test(form.value.nombre) || tieneNumeros.test(form.value.apellido)) {
+    return "Debes colocar un nombre/apellido sin números";
+  }
+  return "";
+});
+
+// 2. Error de DNI inválido
+const errorDni = computed(() => {
+  if (!form.value.dni) return "";
+  const dniValido = /^\d{7,9}$/;
+  if (!dniValido.test(form.value.dni)) {
+    return "El DNI debe ser solo números (entre 7 y 9 dígitos, sin puntos)";
+  }
+  return "";
+});
+
+// 3. Error de Email inválido
+const errorEmail = computed(() => {
+  if (!form.value.email) return "";
+  // La RegEx exige texto que no sea un arroba, seguido de un @, seguido de más texto
+  const emailRegex = /^[^@\s]+@[^@\s]+$/;
+  if (!emailRegex.test(form.value.email)) {
+    return "Debes colocar texto antes del @, incluir el @, y texto luego del @";
+  }
+  return "";
+});
+
+// 4. Error de Contraseña corta
+const errorPassword = computed(() => {
+  if (!form.value.password) return "";
+  if (form.value.password.length < 8) {
+    return "La contraseña debe tener al menos 8 caracteres";
+  }
+  return "";
+});
+
+// 5. Error de Edad menor a 18
+const errorFecha = computed(() => {
+  if (!form.value.fecha_nacimiento) return "";
+  const fnac = new Date(form.value.fecha_nacimiento);
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - fnac.getFullYear();
+  const mes = hoy.getMonth() - fnac.getMonth();
+
+  if (mes < 0 || (mes === 0 && hoy.getDate() < fnac.getDate())) {
+    edad--;
+  }
+
+  if (edad < 18) {
+    return "Debes ser mayor de 18 años para registrarte";
+  }
+  return "";
+});
+
+// 6. VALIDACIÓN GLOBAL DEL FORMULARIO
+const isFormValido = computed(() => {
+  return (
+    form.value.nombre.trim() !== "" &&
+    form.value.apellido.trim() !== "" &&
+    form.value.dni.trim() !== "" &&
+    form.value.email.trim() !== "" &&
+    form.value.password.trim() !== "" &&
+    form.value.fecha_nacimiento !== "" &&
+    !errorNombre.value &&
+    !errorDni.value &&
+    !errorEmail.value &&
+    !errorPassword.value &&
+    !errorFecha.value
+  );
+});
+
+// Máximo calendario HTML
 const maxFechaNacimiento = computed(() => {
   const hoy = new Date();
   hoy.setFullYear(hoy.getFullYear() - 18);
@@ -171,20 +257,6 @@ const maxFechaNacimiento = computed(() => {
 async function handleRegister() {
   loading.value = true;
   error.value = "";
-  errorEdad.value = "";
-
-  // Validar edad mínima en frontend
-  if (form.value.fecha_nacimiento) {
-    const fnac = new Date(form.value.fecha_nacimiento);
-    const hoy = new Date();
-    const edad = hoy.getFullYear() - fnac.getFullYear() -
-      ((hoy.getMonth(), hoy.getDate()) < (fnac.getMonth(), fnac.getDate()) ? 1 : 0);
-    if (edad < 18) {
-      errorEdad.value = "Debés tener al menos 18 años para registrarte.";
-      loading.value = false;
-      return;
-    }
-  }
 
   try {
     await auth.register(form.value);
