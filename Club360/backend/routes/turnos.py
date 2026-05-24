@@ -145,7 +145,7 @@ def crear_turno():
         return jsonify({
             'turno': inactivo.to_dict(),
             'reactivado': True,
-            'mensaje': f'Turno reactivado. {generadas} clase(s) generadas, {existentes} ya existían.'
+            'mensaje': f'Turno reactivado. '
         }), 200
 
     turno = Turno(
@@ -164,7 +164,7 @@ def crear_turno():
     return jsonify({
         'turno': turno.to_dict(),
         'clases_generadas': generadas,
-        'mensaje': f'Turno creado. {generadas} clase(s) generadas hasta fin de año (sin feriados).'
+        'mensaje': f'Turno creado.'
     }), 201
 
 
