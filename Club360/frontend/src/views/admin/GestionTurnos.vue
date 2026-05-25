@@ -3,7 +3,7 @@
     <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <h2>GESTIÓN DE TURNOS</h2>
-        <p>Cada turno genera clases automáticamente hasta fin de año (sin feriados)</p>
+        <p>Cada turno genera clases automáticamente hasta fin de año </p>
       </div>
       <button class="btn btn-primary" @click="abrirCrear">+ Nuevo Turno</button>
     </div>
@@ -61,7 +61,7 @@
         </tbody>
       </table>
       <p v-if="turnos.length === 0" style="text-align:center;padding:32px;color:var(--text-muted)">
-        No hay turnos con esos filtros.
+        No hay turnos disponibles.
       </p>
     </div>
 
