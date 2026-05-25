@@ -3,7 +3,7 @@
     <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <h2>GESTIÓN DE TURNOS</h2>
-        <p>Cada turno genera clases automáticamente hasta fin de año </p>
+        <p>Cada turno genera clases automáticamente hasta fin de año (sin incluir feriados) </p>
       </div>
       <button class="btn btn-primary" @click="abrirCrear">+ Nuevo Turno</button>
     </div>
