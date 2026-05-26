@@ -26,7 +26,7 @@
           
           <div class="input-group">
             <label>Email</label>
-            <input v-model="form.email" type="email" placeholder="tu@email.com" />
+            <input v-model="form.email" type="email" placeholder="tu@email.com" disabled style="opacity:0.4"/>
             <p v-if="errorEmail" class="field-error">{{ errorEmail }}</p>
           </div>
 
