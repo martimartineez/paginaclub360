@@ -224,7 +224,7 @@ const fortaleza = computed(() => {
   const p = passForm.value.nueva_password
   if (!p) return { pct: 0, color: '#da3633', label: '' }
   let score = 0
-  if (p.length >= 6) score++
+  if (p.length >= 8) score++
   if (p.length >= 10) score++
   if (/[A-Z]/.test(p)) score++
   if (/[0-9]/.test(p)) score++
