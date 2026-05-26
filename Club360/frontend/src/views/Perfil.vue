@@ -129,7 +129,7 @@
         <div class="input-group">
           <label>Nueva contraseña</label>
           <div class="input-eye">
-            <input v-model="passForm.nueva_password" :type="verNueva ? 'text' : 'password'" placeholder="Mínimo 6 caracteres" />
+            <input v-model="passForm.nueva_password" :type="verNueva ? 'text' : 'password'" placeholder="Mínimo 8 caracteres" />
             <button class="eye-btn" @click="verNueva = !verNueva">{{ verNueva ? '🙈' : '👁️' }}</button>
           </div>
         </div>
