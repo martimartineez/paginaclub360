@@ -20,13 +20,13 @@
             <option v-for="a in actividades" :key="a.id" :value="a.id">{{ a.nombre }}</option>
           </select>
         </div>
-        <div class="input-group" style="margin:0">
+        <!-- <div class="input-group" style="margin:0">
           <label>Estado</label>
           <select v-model="filtroActivo" @change="fetchTurnos">
             <option value="true">Solo activos</option>
             <option value="false">Todos</option>
           </select>
-        </div>
+        </div> -->
         <button class="btn btn-outline btn-sm" @click="filtroActividad=''; filtroActivo='true'; fetchTurnos()">Limpiar</button>
       </div>
     </div>
