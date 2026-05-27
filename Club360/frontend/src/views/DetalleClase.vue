@@ -79,7 +79,26 @@
 
     <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && !miReserva && !clase.cancelada">
       <h3 style="font-size:20px;margin-bottom:12px">Reservar esta clase</h3>
-      <div v-if="reservando">
+
+      <!-- Sin cupo: panel de lista de espera -->
+      <div v-if="clase.cupos_disponibles === 0 && reservando">
+        <div class="alert alert-warning" style="margin-bottom:12px">
+          ⏳ Este turno no tiene cupos disponibles. Al confirmar, quedás anotado en la lista de espera y te avisaremos si se libera un lugar. <strong>No se realizará ningún cobro.</strong>
+        </div>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">¿Con qué preferencia querés anotarte?</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" @click="reservar('abonado')" :disabled="reservandoLoading">
+            {{ reservandoLoading ? 'Procesando...' : '📅 Como abonado' }}
+          </button>
+          <button class="btn btn-secondary" @click="reservar('no_abonado')" :disabled="reservandoLoading">
+            {{ reservandoLoading ? 'Procesando...' : '🎯 Clase suelta' }}
+          </button>
+          <button class="btn btn-outline" @click="reservando = false">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- Con cupo: selector de tipo con precio -->
+      <div v-else-if="reservando">
         <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">¿Cómo querés inscribirte?</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-primary" @click="reservar('abonado')" :disabled="reservandoLoading">
@@ -91,6 +110,7 @@
           <button class="btn btn-outline" @click="reservando = false">Cancelar</button>
         </div>
       </div>
+
       <button v-else class="btn btn-primary" @click="reservando = true">
         {{ clase.cupos_disponibles === 0 ? '⏳ Anotarme en lista de espera' : '+ Reservar' }}
       </button>

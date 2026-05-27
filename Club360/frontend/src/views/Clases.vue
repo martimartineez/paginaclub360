@@ -189,9 +189,19 @@
               </div>
             </div>
 
-            <div v-if="seleccion.opcionAbono" class="seleccion-banner">
-              <span>✓ {{ seleccion.actividad?.nombre }} · {{ abonoDiaSeleccionado.dia_semana }} {{ seleccion.opcionAbono.hora_inicio }} hs</span>
-              <button class="btn btn-primary" @click="cargarDetalleAbono">Ver detalle del abono →</button>
+            <div v-if="seleccion.opcionAbono" class="seleccion-banner"
+              :style="seleccion.opcionAbono.clases_mes.filter(c => c.cupos_disponibles > 0 && !c.ya_inscripto).length === 0 ? 'border-color: var(--warning); background: rgba(234,179,8,0.08)' : ''"
+            >
+              <span>
+                {{ seleccion.opcionAbono.clases_mes.filter(c => c.cupos_disponibles > 0 && !c.ya_inscripto).length === 0 ? '⏳' : '✓' }}
+                {{ seleccion.actividad?.nombre }} · {{ abonoDiaSeleccionado.dia_semana }} {{ seleccion.opcionAbono.hora_inicio }} hs ·
+                <template v-if="seleccion.opcionAbono.clases_mes.filter(c => c.cupos_disponibles > 0 && !c.ya_inscripto).length === 0">Lista de espera</template>
+              </span>
+              <button class="btn btn-primary" @click="cargarDetalleAbono">
+                {{ seleccion.opcionAbono.clases_mes.filter(c => c.cupos_disponibles > 0 && !c.ya_inscripto).length === 0
+                  ? 'Inscribirme en la lista de espera →'
+                  : 'Ver detalle del abono →' }}
+              </button>
             </div>
           </div>
         </div>
@@ -271,7 +281,10 @@
 
         <div v-if="loadingDetalle" class="loading-text">Calculando abono...</div>
         <div v-else-if="detalleAbono">
-          <div v-if="detalleAbono.aplicar_descuento" class="alert alert-success" style="max-width:500px">
+          <div v-if="detalleAbono.total_disponibles === 0" class="alert alert-warning" style="max-width:500px">
+            ⏳ Este turno no tiene cupos disponibles este mes. Al confirmar, serás anotado automáticamente en la lista de espera para todas las clases. <strong>No se realizará ningún cobro.</strong>
+          </div>
+          <div v-else-if="detalleAbono.aplicar_descuento" class="alert alert-success" style="max-width:500px">
             🎉 Estás entrando a mitad de mes con más de 1 clase disponible. ¡Tenés un 20% de descuento en cada clase!
           </div>
           <div v-else-if="!detalleAbono.usuario_tiene_beneficio && detalleAbono.total_disponibles > 1" class="alert alert-warning" style="max-width:500px">
@@ -679,14 +692,15 @@ async function confirmarPago() {
         .filter(c => !c.incluida_en_abono && !c.ya_inscripto && !c.cancelada)
         .map(c => c.clase_id)
 
-      const pagoAhora = !esPeriodoGracia.value  // si NO es periodo gracia, paga ahora
+      // Solo paga ahora si NO es periodo gracia Y hay clases con cupo disponible
+      const pagoAhora = !esPeriodoGracia.value && clasesIds.length > 0
 
       const { data } = await api.post('/reservas/abono', {
         clases_ids: [...clasesIds, ...clasesSinCupoIds],
         monto_total: detalleAbono.value.monto_total,
         metodo_pago: pagoAhora ? 'tarjeta_credito' : null,
         aplicar_descuento: detalleAbono.value.aplicar_descuento,
-        pago_diferido: esPeriodoGracia.value
+        pago_diferido: esPeriodoGracia.value || clasesIds.length === 0
       })
       resultadoExito.value = { ...data, pago_diferido: esPeriodoGracia.value }
     } else {
