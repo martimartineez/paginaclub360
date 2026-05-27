@@ -27,7 +27,7 @@
           </div>
           <div class="reserva-badges">
             <span class="badge" :class="tipoBadge(r.tipo)">{{ r.tipo === 'abonado' ? 'Mensual' : 'Clase suelta' }}</span>
-            <span class="badge" :class="estadoBadge(r.estado)">{{ r.estado }}</span>
+            <!-- <span class="badge" :class="estadoBadge(r.estado)">{{ r.estado }}</span> -->
           </div>
         </div>
 
