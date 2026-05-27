@@ -161,7 +161,7 @@
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
             No tenés tarjetas registradas. Agregá una:
           </p>
-          <FormTarjeta label-boton="Guardar y pagar" :show-cancelar="true"
+          <FormTarjeta label-boton="Guardar tarjeta" :show-cancelar="true"
             @guardada="onTarjetaGuardada" @cancelar="pagoModal = null" />
         </div>
 

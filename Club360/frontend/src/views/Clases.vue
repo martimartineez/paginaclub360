@@ -396,7 +396,7 @@
         <template v-else>
           <div v-if="tarjetas.length === 0" style="max-width:440px">
             <div class="alert alert-warning">No tenés ninguna tarjeta registrada. Agregá una para continuar.</div>
-            <FormTarjeta label-boton="Guardar y continuar" :show-cancelar="false" @guardada="onTarjetaGuardada" />
+            <FormTarjeta label-boton="Guardar tarjeta" :show-cancelar="false" @guardada="onTarjetaGuardada" />
           </div>
           <div v-else style="max-width:440px">
             <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px">Seleccioná una tarjeta:</p>
