@@ -180,7 +180,7 @@
             <input
               v-model.number="nuevoCupo"
               type="number"
-              :min="clase.cupo_maximo - clase.cupos_disponibles"
+              :min="clase.cupo_maximo - clase.cupos_disponibles" :max="50"
             />
             <p v-if="errorCupo" class="field-error">{{ errorCupo }}</p>
           </div>
@@ -190,7 +190,7 @@
           </div> -->
           
           <div style="display:flex;gap:10px;margin-top:12px">
-            <button type="submit" class="btn btn-primary" :disabled="guardandoCupo || !isCupoValido">
+            <button type="submit" class="btn btn-primary" :disabled="guardandoCupo || !isCupoValido || nuevoCupo > 50">
               {{ guardandoCupo ? 'Guardando...' : 'Guardar' }}
             </button>
             <button type="button" class="btn btn-outline" @click="modalEditarCupo = false">Cancelar</button>
@@ -272,8 +272,9 @@ const cancelandoReserva = ref(false)
 
 const errorCupo = computed(() => {
   if (!clase.value) return ''
-  if (nuevoCupo.value === '' || nuevoCupo.value === null) return 'El cupo es requerido'
-  
+  if (nuevoCupo.value === '' || nuevoCupo.value === null ) return 'El cupo es requerido'
+  if (nuevoCupo.value > 50) return 'El cupo no puede ser mayor a 50'
+
   const inscriptosActuales = clase.value.cupo_maximo - clase.value.cupos_disponibles
 
   if (nuevoCupo.value < 0) {
