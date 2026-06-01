@@ -60,12 +60,20 @@ def seed_data(app):
             return
 
         # Usuarios
-        admin = Usuario(nombre='Admin', apellido='Club360', dni='00000000', email='admin@club360.com', rol='administrador')
+        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='admin@club360.com', rol='administrador')
         admin.set_password('admin123')
         emp = Usuario(nombre='Carlos', apellido='Gómez', dni='11111111', email='empleado@club360.com', rol='empleado')
         emp.set_password('emp123')
         cli = Usuario(nombre='Juan', apellido='Pérez', dni='22222222', email='cliente@club360.com', rol='cliente')
         cli.set_password('cliente123')
+        cli1 = Usuario(nombre='Alejandro', apellido='Camacho', dni='44000332', email='ale@gmail.com', rol='cliente')
+        cli1.set_password('alejandro123')
+        cli2 = Usuario(nombre='Lautaro', apellido='Mendez', dni='45002221', email='lauti@gmail.com', rol='cliente')
+        cli2.set_password('12345678')
+        cli3 = Usuario(nombre='Maria', apellido='Mendez', dni='45229801', email='maria@gmail.com', rol='cliente')
+        cli3.set_password('12345678')
+        cli4 = Usuario(nombre='Jesus', apellido='Diaz', dni='10675222', email='jesus@gmail.com', rol='cliente')
+        cli4.set_password('12345678')
 
         actividades = [
             Actividad(nombre='Fútbol', descripcion='Fútbol 5 en cancha de césped sintético', precio_clase=2500),
