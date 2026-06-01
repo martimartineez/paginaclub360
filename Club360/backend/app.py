@@ -81,7 +81,7 @@ def seed_data(app):
             Actividad(nombre='Básquet', descripcion='Básquet en cancha reglamentaria', precio_clase=2000),
             Actividad(nombre='Vóley', descripcion='Vóley en cancha de arena', precio_clase=2000),
         ]
-        db.session.add_all([admin, emp, cli] + actividades)
+        db.session.add_all([admin, emp, cli, cli1, cli2, cli3, cli4] + actividades)
         db.session.commit()
 
         # # Crear turnos demo (generan clases automáticamente hasta fin de año)
