@@ -124,6 +124,8 @@ def get_pagos_resumen():
     # 1. Procesamos los Abonos Agrupados
     abonos = Abono.query.filter_by(usuario_id=user_id).order_by(Abono.fecha_creacion.desc()).all()
     for abono in abonos:
+        if not abono.reservas:
+            continue
         monto_total = float(abono.monto_total or 0)
         monto_pagado = float(abono.monto_pagado or 0)
         deuda = max(0, monto_total - monto_pagado)
@@ -303,6 +305,9 @@ def crear_abono():
             r.monto_pagado = r.monto_total
             # Opcional: si considerás que ya está saldado el total
             r.senia_pagada = True
+
+    if not reservas_creadas:
+        db.session.delete(nuevo_abono)
 
     db.session.commit()
 
