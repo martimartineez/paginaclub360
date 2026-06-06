@@ -57,7 +57,7 @@
               📅 Tenés hasta el <strong>día 10</strong> de este mes para pagar este abono.
             </div>
 
-            <div class="pago-detalle-label">{{ item.deuda_label }}</div>
+            <!-- <div class="pago-detalle-label">{{ item.deuda_label }}</div> -->
 
             <div class="pago-acciones">
               <template v-if="item.tipo === 'abonado'">
@@ -65,7 +65,7 @@
                   class="btn btn-primary btn-sm"
                   @click="abrirPagoAbono(item)"
                 >
-                  💳 Pagar abono completo ${{ item.deuda?.toLocaleString() }}
+                  💳 Pagar 
                 </button>
               </template>
 
@@ -75,22 +75,22 @@
                   class="btn btn-secondary btn-sm"
                   @click="abrirPagoIndividual(item, 'senia')"
                 >
-                  💳 Pagar seña ${{ Math.round(item.monto_total * 0.5)?.toLocaleString() }}
+                  💳 Pagar 
                 </button>
-                <button
+                <!-- <button
                   v-if="!item.senia_pagada"
                   class="btn btn-primary btn-sm"
                   @click="abrirPagoIndividual(item, 'total')"
                 >
                   💳 Pagar total ${{ item.monto_total?.toLocaleString() }}
-                </button>
-                <button
+                </button> -->
+                <!-- <button
                   v-if="item.senia_pagada && item.deuda > 0"
                   class="btn btn-primary btn-sm"
                   @click="abrirPagoIndividual(item, 'restante')"
                 >
                   💳 Pagar restante ${{ item.deuda?.toLocaleString() }}
-                </button>
+                </button> -->
               </template>
             </div>
           </div>
