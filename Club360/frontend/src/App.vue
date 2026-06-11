@@ -12,6 +12,10 @@
             <router-link to="/clases" class="nav-link">
               Clases disponibles
             </router-link>
+
+            <router-link to="/admin/usuarios" class="nav-link">
+              Gestionar usuarios
+            </router-link>
           </template>
 
           <template v-if="auth.isCliente">

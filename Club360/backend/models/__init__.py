@@ -254,6 +254,7 @@ class Pago(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     reserva_id = db.Column(db.Integer, db.ForeignKey('reservas.id'), nullable=True)  # <-- Ahora admite NULL
     abono_id = db.Column(db.Integer, db.ForeignKey('abonos.id'), nullable=True)      # <-- Nueva columna
+    suspension_id = db.Column(db.Integer, db.ForeignKey('suspensiones.id'), nullable=True)
     monto = db.Column(db.Numeric(10, 2), nullable=False)
     metodo = db.Column(db.Enum('efectivo', 'tarjeta_credito', name='metodo_pago_enum'), nullable=False)
     tipo_pago = db.Column(db.Enum('senia', 'mensualidad', 'suspension', name='tipo_pago_enum'), nullable=False)
@@ -265,6 +266,7 @@ class Pago(db.Model):
             'id': self.id,
             'reserva_id': self.reserva_id,
             'abono_id': self.abono_id,  # <-- Expuesto en el dict
+            'suspension_id': self.suspension_id,
             'monto': float(self.monto),
             'metodo': self.metodo,
             'tipo_pago': self.tipo_pago,
@@ -294,8 +296,13 @@ class Suspension(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     clase_id = db.Column(db.Integer, db.ForeignKey('clases.id'), nullable=True)
+    turno_id = db.Column(db.Integer, db.ForeignKey('turnos.id'), nullable=True)
+    abono_id = db.Column(db.Integer, db.ForeignKey('abonos.id'), nullable=True)
     tipo = db.Column(db.Enum('abonado', 'no_abonado', name='tipo_susp_enum'), nullable=False)
     motivo = db.Column(db.Text)
+    cantidad_clases = db.Column(db.Integer, default=0)
+    monto_original = db.Column(db.Numeric(10, 2), default=0)
+    recargo = db.Column(db.Numeric(10, 2), default=0)
     monto_deuda = db.Column(db.Numeric(10, 2), default=0)
     activa = db.Column(db.Boolean, default=True)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
@@ -303,17 +310,49 @@ class Suspension(db.Model):
 
     usuario = db.relationship('Usuario', backref='suspensiones')
     clase = db.relationship('Clase', backref='suspensiones')
+    turno = db.relationship('Turno', backref='suspensiones')
+    abono = db.relationship('Abono', backref='suspensiones')
+    pagos = db.relationship('Pago', backref='suspension', lazy=True)
 
     def to_dict(self):
+        clase = self.clase
+        turno = self.turno
+        actividad = None
+        turno_label = None
+        clase_label = None
+
+        if turno:
+            actividad = turno.actividad.nombre if turno.actividad else None
+            turno_label = f"{turno.dia_semana_str()} {turno.hora_inicio.strftime('%H:%M')} hs"
+        elif clase:
+            actividad = clase.actividad.nombre if clase.actividad else None
+            turno_label = f"{clase.dia_semana_str()} {clase.hora_inicio.strftime('%H:%M')} hs"
+            clase_label = f"{clase.dia_semana_str()} {clase.fecha.isoformat()} {clase.hora_inicio.strftime('%H:%M')} hs"
+
+        tipo_suspension = 'abonado_turno' if self.tipo == 'abonado' else 'clase_suelta'
+
         return {
             'id': self.id,
             'usuario_id': self.usuario_id,
             'clase_id': self.clase_id,
+            'turno_id': self.turno_id,
+            'abono_id': self.abono_id,
             'tipo': self.tipo,
+            'tipo_suspension': tipo_suspension,
+            'tipo_label': 'Abonado en turno' if self.tipo == 'abonado' else 'Clase suelta',
             'motivo': self.motivo,
+            'actividad': actividad,
+            'turno_label': turno_label,
+            'clase_label': clase_label,
+            'cantidad_clases': self.cantidad_clases or 0,
+            'monto_original': float(self.monto_original) if self.monto_original else 0,
+            'recargo': float(self.recargo) if self.recargo else 0,
             'monto_deuda': float(self.monto_deuda) if self.monto_deuda else 0,
+            'total_pagar': float(self.monto_deuda) if self.monto_deuda else 0,
             'activa': self.activa,
-            'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None
+            'estado': 'activa' if self.activa else 'resuelta',
+            'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
+            'fecha_levantamiento': self.fecha_levantamiento.isoformat() if self.fecha_levantamiento else None
         }
 
 

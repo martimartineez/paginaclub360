@@ -4,6 +4,7 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from dotenv import load_dotenv
+from sqlalchemy import inspect, text
 import os
 
 load_dotenv()
@@ -49,6 +50,40 @@ def create_app():
         return jsonify({'status': 'ok', 'app': 'Club 360'}), 200
 
     return app
+
+
+def ensure_schema_compatibility(app):
+    """Agrega columnas opcionales nuevas cuando la base ya existia."""
+    with app.app_context():
+        inspector = inspect(db.engine)
+        if not inspector.has_table('suspensiones'):
+            return
+
+        dialect = db.engine.dialect.name
+        columnas_susp = {c['name'] for c in inspector.get_columns('suspensiones')}
+        tiene_pagos = inspector.has_table('pagos')
+        columnas_pago = {c['name'] for c in inspector.get_columns('pagos')} if tiene_pagos else set()
+
+        numeric_type = 'NUMERIC(10, 2)' if dialect != 'sqlite' else 'NUMERIC'
+        alteraciones = []
+
+        for nombre, tipo in {
+            'turno_id': 'INTEGER',
+            'abono_id': 'INTEGER',
+            'cantidad_clases': 'INTEGER DEFAULT 0',
+            'monto_original': f'{numeric_type} DEFAULT 0',
+            'recargo': f'{numeric_type} DEFAULT 0',
+        }.items():
+            if nombre not in columnas_susp:
+                alteraciones.append(f'ALTER TABLE suspensiones ADD COLUMN {nombre} {tipo}')
+
+        if tiene_pagos and 'suspension_id' not in columnas_pago:
+            alteraciones.append('ALTER TABLE pagos ADD COLUMN suspension_id INTEGER')
+
+        for sql in alteraciones:
+            db.session.execute(text(sql))
+        if alteraciones:
+            db.session.commit()
 
 
 def seed_data(app):
@@ -112,5 +147,7 @@ if __name__ == '__main__':
     app = create_app()
     with app.app_context():
         db.create_all()
+    ensure_schema_compatibility(app)
+    with app.app_context():
         seed_data(app)
     app.run(debug=True, port=5000)

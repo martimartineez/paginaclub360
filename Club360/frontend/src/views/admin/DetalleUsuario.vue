@@ -48,6 +48,10 @@
             <span class="accion-icon">🔓</span>
             <span>Cancelar suspensión</span>
           </button>
+          <button class="accion-btn" v-if="auth.isAdmin" @click="crearSuspensionClaseSueltaPrueba" :disabled="creandoSuspensionPrueba">
+            <span class="accion-icon">!</span>
+            <span>{{ creandoSuspensionPrueba ? 'Creando...' : 'Probar suspension clase suelta' }}</span>
+          </button>
         </template>
         <button
           class="accion-btn accion-peligro"
@@ -512,6 +516,7 @@ const diasAbonoEmpl = computed(() => {
 const suspensiones = ref([])
 const metodoLevantamiento = ref('efectivo')
 const levantando = ref(null)
+const creandoSuspensionPrueba = ref(false)
 const modalEliminar = ref(false)
 const eliminando = ref(false)
 const modalCancelarReserva = ref(null)
@@ -561,8 +566,8 @@ async function fetchReservas() {
 
 async function fetchSuspensiones() {
   try {
-    const { data } = await api.get('/suspensiones/', { params: { activas: true } })
-    suspensiones.value = data.filter(s => s.usuario_id === parseInt(route.params.id))
+    const { data } = await api.get('/suspensiones/', { params: { activas: true, usuario_id: parseInt(route.params.id) } })
+    suspensiones.value = data
   } catch {}
 }
 
@@ -737,6 +742,36 @@ async function levantarSuspension(s) {
     err.value = e.response?.data?.error || 'Error al levantar suspensión'
   } finally {
     levantando.value = null
+  }
+}
+
+async function crearSuspensionClaseSueltaPrueba() {
+  if (usuario.value?.suspensiones_activas?.some(s => s.tipo === 'no_abonado')) {
+    msg.value = 'El usuario ya tiene una suspension activa por clase suelta'
+    tab.value = 'suspensiones'
+    await fetchSuspensiones()
+    return
+  }
+
+  creandoSuspensionPrueba.value = true
+  err.value = ''
+  msg.value = ''
+  try {
+    await api.post('/suspensiones/', {
+      usuario_id: parseInt(route.params.id),
+      tipo: 'no_abonado',
+      motivo: 'Suspension de prueba por 3 inasistencias con pagos pendientes en clases sueltas.',
+      cantidad_clases: 3,
+      monto_original: 3000
+    })
+    msg.value = 'Suspension de prueba creada correctamente'
+    tab.value = 'suspensiones'
+    await fetchUsuario()
+    await fetchSuspensiones()
+  } catch (e) {
+    err.value = e.response?.data?.error || 'Error al crear la suspension de prueba'
+  } finally {
+    creandoSuspensionPrueba.value = false
   }
 }
 

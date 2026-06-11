@@ -32,7 +32,9 @@
     <div class="alert alert-success" v-if="regMsg">{{ regMsg }}</div>
     <div class="alert alert-error" v-if="error">{{ error }}</div>
 
-    <div class="card" style="overflow:auto">
+    <div v-if="loading" class="loading-text">Cargando usuarios...</div>
+
+    <div v-else class="card" style="overflow:auto">
       <table>
         <thead>
           <tr><th>Nombre</th><th>DNI</th><th>Email</th><th>Rol</th><th>Suspensiones</th><th>Acciones</th></tr>
@@ -58,7 +60,7 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="usuarios.length === 0" style="text-align:center;padding:32px;color:var(--text-muted)">
+      <p v-if="!error && usuarios.length === 0" style="text-align:center;padding:32px;color:var(--text-muted)">
         No se encontraron usuarios.
       </p>
     </div>
@@ -95,6 +97,7 @@
         </div>
         <div class="input-group"><label>DNI</label><input v-model="regForm.dni" placeholder="Sin puntos ni guiones" /></div>
         <div class="input-group"><label>Email</label><input v-model="regForm.email" type="email" /></div>
+        <div class="input-group"><label>Fecha de nacimiento</label><input v-model="regForm.fecha_nacimiento" type="date" /></div>
         <div class="input-group">
           <label>Contraseña inicial</label>
           <input v-model="regForm.password" type="password" placeholder="Mínimo 6 caracteres" />
@@ -120,6 +123,7 @@ import api from '../../api.js'
 
 const auth = useAuthStore()
 const usuarios = ref([])
+const loading = ref(false)
 const busqueda = ref('')
 const filtroRol = ref('')
 const error = ref('')
@@ -127,7 +131,7 @@ const regMsg = ref('')
 const detalleSimple = ref(null)
 const modalRegistrar = ref(false)
 const rolRegistrando = ref('cliente')
-const regForm = ref({ nombre: '', apellido: '', dni: '', email: '', password: '' })
+const regForm = ref({ nombre: '', apellido: '', dni: '', email: '', password: '', fecha_nacimiento: '' })
 const regError = ref('')
 const regLoading = ref(false)
 const modalBorrar = ref(null)
@@ -141,7 +145,7 @@ function verDetalleSimple(u) { detalleSimple.value = u }
 
 function abrirRegistro(rol) {
   rolRegistrando.value = rol
-  regForm.value = { nombre: '', apellido: '', dni: '', email: '', password: '' }
+  regForm.value = { nombre: '', apellido: '', dni: '', email: '', password: '', fecha_nacimiento: '' }
   regError.value = ''
   modalRegistrar.value = true
 }
@@ -152,15 +156,24 @@ function cerrarModal() {
 }
 
 async function fetchUsuarios() {
+  loading.value = true
+  error.value = ''
   const params = {}
   if (busqueda.value) params.q = busqueda.value
   if (filtroRol.value) params.rol = filtroRol.value
-  const { data } = await api.get('/usuarios/', { params })
-  usuarios.value = data
+  try {
+    const { data } = await api.get('/usuarios/', { params })
+    usuarios.value = data
+  } catch (e) {
+    usuarios.value = []
+    error.value = e.response?.data?.error || 'Error al cargar usuarios'
+  } finally {
+    loading.value = false
+  }
 }
 
 async function registrarUsuario() {
-  if (!regForm.value.nombre || !regForm.value.dni || !regForm.value.email || !regForm.value.password) {
+  if (!regForm.value.nombre || !regForm.value.apellido || !regForm.value.dni || !regForm.value.email || !regForm.value.password || !regForm.value.fecha_nacimiento) {
     regError.value = 'Completá todos los campos'
     return
   }
@@ -203,6 +216,7 @@ onMounted(fetchUsuarios)
 
 <style scoped>
 .filters-bar { padding: 16px 24px; }
+.loading-text { text-align:center;padding:40px;color:var(--text-muted); }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { max-width: 480px; width: 100%; }
 .modal h3 { font-size: 22px; margin-bottom: 20px; }

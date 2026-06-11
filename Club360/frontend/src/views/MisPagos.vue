@@ -5,6 +5,9 @@
       <p>Gestioná tus pagos pendientes y revisá tu historial</p>
     </div>
 
+    <div class="alert alert-success" v-if="mensaje">{{ mensaje }}</div>
+    <div class="alert alert-error" v-if="error">{{ error }}</div>
+
     <div v-if="loading" class="loading-text">Cargando pagos...</div>
 
     <template v-else>
@@ -99,6 +102,66 @@
 
       <div class="seccion" style="margin-top:32px">
         <div class="seccion-header">
+          <h3>Suspensiones</h3>
+          <span class="badge badge-red" v-if="suspensiones.length">{{ suspensiones.length }}</span>
+          <span class="badge badge-green" v-else>Sin activas</span>
+        </div>
+
+        <div v-if="suspensiones.length === 0" class="empty-card card">
+          <span style="font-size:40px">✓</span>
+          <p>No tenés suspensiones activas.</p>
+        </div>
+
+        <div v-else class="pagos-lista">
+          <div v-for="s in suspensiones" :key="'suspension-' + s.id" class="pago-card card suspension-card">
+            <div class="pago-header">
+              <span class="sport-emoji">{{ sportEmoji(s.actividad) }}</span>
+              <div class="pago-info">
+                <div class="pago-titulo">
+                  <h4>{{ s.tipo_label }}</h4>
+                  <span class="badge badge-red">{{ s.estado }}</span>
+                </div>
+                <p class="pago-fecha">{{ s.motivo || 'Suspensión activa' }}</p>
+                <p class="pago-fecha" v-if="s.turno_label">
+                  {{ s.actividad }} · {{ s.turno_label }}
+                </p>
+              </div>
+              <div class="pago-monto-col">
+                <span class="monto-deuda">${{ s.total_pagar?.toLocaleString() }}</span>
+                <span class="monto-label">total</span>
+              </div>
+            </div>
+
+            <div class="suspension-detalle-grid">
+              <div>
+                <span class="detalle-label">Clases adeudadas</span>
+                <strong>{{ s.cantidad_clases || '—' }}</strong>
+              </div>
+              <div>
+                <span class="detalle-label">Monto original</span>
+                <strong>${{ s.monto_original?.toLocaleString() }}</strong>
+              </div>
+              <div>
+                <span class="detalle-label">Recargo 5%</span>
+                <strong>${{ s.recargo?.toLocaleString() }}</strong>
+              </div>
+              <div>
+                <span class="detalle-label">Total a pagar</span>
+                <strong class="text-warning">${{ s.total_pagar?.toLocaleString() }}</strong>
+              </div>
+            </div>
+
+            <div class="pago-acciones">
+              <button class="btn btn-primary btn-sm" @click="abrirPagoSuspension(s)">
+                Pagar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="seccion" style="margin-top:32px">
+        <div class="seccion-header">
           <h3>✅ Pagado</h3>
           <span class="badge badge-blue">{{ pagados.length }}</span>
         </div>
@@ -147,7 +210,8 @@
         <h3>💳 Pagar con tarjeta de crédito</h3>
         <p style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
           {{ pagoModal.actividad }} ·
-          {{ pagoModal.tipo === 'abonado' ? 'Abono Mensual' : 'Clase suelta' }}
+          {{ tipoModalPago === 'suspension' ? pagoModal.tipo_label : (pagoModal.tipo === 'abonado' ? 'Abono Mensual' : 'Clase suelta') }}
+          <span v-if="tipoModalPago === 'suspension' && pagoModal.turno_label"> · {{ pagoModal.turno_label }}</span>
           <span v-if="pagoModal.fecha_clase"> · {{ formatFecha(pagoModal.fecha_clase) }}</span>
         </p>
 
@@ -216,6 +280,7 @@ import FormTarjeta from '../components/FormTarjeta.vue'
 const loading = ref(true)
 const pendientes = ref([])
 const pagados = ref([])
+const suspensiones = ref([])
 const tarjetas = ref([])
 const tarjetaSeleccionada = ref(null)
 const mostrarNuevaTarjeta = ref(false)
@@ -223,6 +288,8 @@ const pagoModal = ref(null)
 const tipoModalPago = ref(null)
 const procesando = ref(false)
 const errPago = ref('')
+const error = ref('')
+const mensaje = ref('')
 
 const montoModalPago = computed(() => {
   if (!pagoModal.value) return 0
@@ -231,6 +298,7 @@ const montoModalPago = computed(() => {
   if (tipoModalPago.value === 'total') return item.monto_total
   if (tipoModalPago.value === 'restante') return item.deuda
   if (tipoModalPago.value === 'abono') return item.deuda
+  if (tipoModalPago.value === 'suspension') return item.total_pagar || item.monto_deuda
   return item.deuda
 })
 
@@ -251,14 +319,24 @@ function progresoWidth(item) {
 
 async function fetchPagos() {
   loading.value = true
+  error.value = ''
   try {
     const { data } = await api.get('/reservas/pagos-resumen')
     pendientes.value = data.pendientes
     pagados.value = data.pagados
   } catch (e) {
-    console.error('Error al cargar pagos', e)
+    error.value = e.response?.data?.error || 'Error al cargar pagos'
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchSuspensiones() {
+  try {
+    const { data } = await api.get('/suspensiones/mis')
+    suspensiones.value = data
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Error al cargar suspensiones'
   }
 }
 
@@ -284,6 +362,14 @@ function abrirPagoIndividual(item, tipo) {
   mostrarNuevaTarjeta.value = false
 }
 
+function abrirPagoSuspension(item) {
+  pagoModal.value = item
+  tipoModalPago.value = 'suspension'
+  errPago.value = ''
+  mensaje.value = ''
+  mostrarNuevaTarjeta.value = false
+}
+
 function onTarjetaGuardada(t) {
   tarjetas.value.push(t)
   tarjetaSeleccionada.value = t
@@ -297,7 +383,13 @@ async function ejecutarPago() {
   try {
     const monto = montoModalPago.value
     
-    if (pagoModal.value.tipo === 'abonado') {
+    if (tipoModalPago.value === 'suspension') {
+      await api.post(`/suspensiones/${pagoModal.value.id}/pagar`, {
+        metodo: 'tarjeta_credito',
+        monto
+      })
+      mensaje.value = 'Suspensión pagada correctamente'
+    } else if (pagoModal.value.tipo === 'abonado') {
       // Pega al nuevo endpoint para pagar la suscripción global
       await api.post(`/reservas/abono/${pagoModal.value.abono_id}/pagar`, {
         metodo: 'tarjeta_credito',
@@ -317,7 +409,7 @@ async function ejecutarPago() {
 
     pagoModal.value = null
     tarjetaSeleccionada.value = tarjetas.value[0] || null
-    await fetchPagos()
+    await Promise.all([fetchPagos(), fetchSuspensiones()])
   } catch (e) {
     errPago.value = e.response?.data?.error || 'Error al procesar el pago'
   } finally {
@@ -326,7 +418,7 @@ async function ejecutarPago() {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchPagos(), fetchTarjetas()])
+  await Promise.all([fetchPagos(), fetchTarjetas(), fetchSuspensiones()])
 })
 </script>
 
@@ -428,6 +520,33 @@ onMounted(async () => {
 }
 
 .pago-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.suspension-card { border-color: rgba(218,54,51,0.28); }
+.suspension-detalle-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.suspension-detalle-grid > div {
+  background: var(--dark-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.detalle-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.text-warning { color: var(--warning); }
+
+@media (max-width: 768px) {
+  .suspension-detalle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 .modal-overlay {
   position: fixed; inset: 0;

@@ -44,8 +44,8 @@
         ¿No tenés cuenta?
         <router-link to="/registro">Registrate</router-link>
       </p>
-
-      <!-- <div class="demo-creds">
+      <!-- CREDENCIALES DEMO BORRAR DESPUES DE PRUEBAS -->
+      <div class="demo-creds">
         <p>Credenciales de prueba:</p>
 
         <div class="cred-list">
@@ -73,7 +73,8 @@
             cliente@club360.com / cliente123
           </div>
         </div>
-      </div> -->
+      </div>
+      <!-- CREDENCIALES DEMO BORRAR DESPUES DE PRUEBAS -->
     </div>
   </div>
 </template>

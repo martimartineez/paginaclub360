@@ -1,7 +1,12 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Usuario, Actividad, Asistencia, Reserva, Suspension, Pago, Clase
-from datetime import datetime
+from models import db, Usuario, Actividad, Asistencia, Reserva, Suspension, Pago
+from suspensiones_logic import (
+    resolver_suspension_con_pago,
+    sincronizar_suspensiones_usuario,
+    suspensiones_activas_usuario,
+    tiene_suspension_abonado_para_clase,
+)
 
 usuarios_bp = Blueprint('usuarios', __name__)
 actividades_bp = Blueprint('actividades', __name__)
@@ -44,10 +49,12 @@ def listar_usuarios():
     usuarios = query.all()
     result = []
     for u in usuarios:
+        sincronizar_suspensiones_usuario(u.id)
         d = u.to_dict()
         suspensiones = Suspension.query.filter_by(usuario_id=u.id, activa=True).all()
         d['suspensiones_activas'] = [s.to_dict() for s in suspensiones]
         result.append(d)
+    db.session.commit()
     return jsonify(result), 200
 
 
@@ -59,6 +66,7 @@ def get_usuario(uid):
     if int(user_id) != uid and user.rol not in ('administrador', 'empleado'):
         return jsonify({'error': 'Sin permisos'}), 403
     target = Usuario.query.get_or_404(uid)
+    sincronizar_suspensiones_usuario(uid, commit=True)
     data = target.to_dict()
     suspensiones = Suspension.query.filter_by(usuario_id=uid, activa=True).all()
     data['suspensiones_activas'] = [s.to_dict() for s in suspensiones]
@@ -70,6 +78,7 @@ def get_usuario(uid):
 @require_rol('administrador', 'empleado')
 def get_reservas_usuario(uid):
     """Ver todas las reservas de un cliente específico"""
+    sincronizar_suspensiones_usuario(uid, commit=True)
     reservas = Reserva.query.filter_by(usuario_id=uid).order_by(Reserva.fecha_creacion.desc()).all()
     result = []
     for r in reservas:
@@ -219,6 +228,14 @@ def registrar_asistencia():
     reserva = Reserva.query.get_or_404(reserva_id)
     cliente = reserva.cliente
 
+    sincronizar_suspensiones_usuario(cliente.id, commit=True)
+
+    if reserva.tipo == 'abonado' and tiene_suspension_abonado_para_clase(cliente.id, reserva.clase):
+        return jsonify({'error': 'Cliente suspendido para este turno'}), 403
+
+    if reserva.estado != 'activa':
+        return jsonify({'error': 'La reserva no esta activa'}), 400
+
     estado_cliente = {'nombre': f'{cliente.nombre} {cliente.apellido}', 'alertas': []}
 
     suspensiones = Suspension.query.filter_by(usuario_id=cliente.id, activa=True).all()
@@ -243,12 +260,30 @@ def registrar_asistencia():
 
 # ---- SUSPENSIONES ----
 
+@suspensiones_bp.route('/mis', methods=['GET'])
+@jwt_required()
+def mis_suspensiones():
+    user_id = int(get_jwt_identity())
+    suspensiones = suspensiones_activas_usuario(user_id)
+    return jsonify([s.to_dict() for s in suspensiones]), 200
+
+
 @suspensiones_bp.route('/', methods=['GET'])
 @jwt_required()
 @require_rol('administrador', 'empleado')
 def listar_suspensiones():
     activas = request.args.get('activas', 'true') == 'true'
-    suspensiones = Suspension.query.filter_by(activa=activas).all()
+    usuario_id = request.args.get('usuario_id', type=int)
+    if usuario_id:
+        sincronizar_suspensiones_usuario(usuario_id, commit=True)
+    else:
+        for usuario in Usuario.query.filter_by(rol='cliente').all():
+            sincronizar_suspensiones_usuario(usuario.id)
+        db.session.commit()
+    query = Suspension.query.filter_by(activa=activas)
+    if usuario_id:
+        query = query.filter_by(usuario_id=usuario_id)
+    suspensiones = query.all()
     result = []
     for s in suspensiones:
         d = s.to_dict()
@@ -262,11 +297,19 @@ def listar_suspensiones():
 @require_rol('administrador')
 def crear_suspension():
     data = request.get_json()
+    monto_original = float(data.get('monto_original', data.get('monto_deuda', 0)) or 0)
+    recargo = round(monto_original * 0.05, 2)
     susp = Suspension(
         usuario_id=data['usuario_id'],
         tipo=data['tipo'],
+        clase_id=data.get('clase_id'),
+        turno_id=data.get('turno_id'),
+        abono_id=data.get('abono_id'),
         motivo=data.get('motivo', ''),
-        monto_deuda=data.get('monto_deuda', 0),
+        cantidad_clases=data.get('cantidad_clases', 0),
+        monto_original=monto_original,
+        recargo=recargo,
+        monto_deuda=round(monto_original + recargo, 2),
         activa=True
     )
     db.session.add(susp)
@@ -274,9 +317,19 @@ def crear_suspension():
     return jsonify(susp.to_dict()), 201
 
 
+@suspensiones_bp.route('/<int:susp_id>/pagar', methods=['POST'])
+@jwt_required()
+def pagar_suspension(susp_id):
+    return _pagar_suspension(susp_id)
+
+
 @suspensiones_bp.route('/solicitar-retiro/<int:susp_id>', methods=['POST'])
 @jwt_required()
 def solicitar_retiro(susp_id):
+    return _pagar_suspension(susp_id)
+
+
+def _pagar_suspension(susp_id):
     user_id = get_jwt_identity()
     susp = Suspension.query.get_or_404(susp_id)
     user = Usuario.query.get(int(user_id))
@@ -285,10 +338,18 @@ def solicitar_retiro(susp_id):
         return jsonify({'error': 'Sin permisos'}), 403
 
     data = request.get_json()
-    metodo = data.get('metodo', 'efectivo')
+    metodo = data.get('metodo', 'tarjeta_credito')
 
-    susp.activa = False
-    susp.fecha_levantamiento = datetime.utcnow()
-    db.session.commit()
+    if metodo == 'efectivo' and user.rol not in ('empleado', 'administrador'):
+        return jsonify({'error': 'El pago en efectivo debe registrarlo un empleado'}), 403
 
-    return jsonify({'mensaje': 'Suspensión levantada', 'suspension': susp.to_dict()}), 200
+    try:
+        pago = resolver_suspension_con_pago(susp, int(user_id), metodo)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    return jsonify({
+        'mensaje': 'Suspension pagada y levantada',
+        'pago': pago.to_dict(),
+        'suspension': susp.to_dict()
+    }), 200

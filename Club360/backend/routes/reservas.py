@@ -2,6 +2,11 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Reserva, Clase, Usuario, ListaEspera, Suspension, Pago, Abono
 from datetime import datetime, date
+from suspensiones_logic import (
+    sincronizar_suspensiones_usuario,
+    tiene_suspension_abonado_para_clase,
+    tiene_suspension_no_abonado,
+)
 import qrcode, io, base64
 
 reservas_bp = Blueprint('reservas', __name__)
@@ -29,11 +34,13 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
         return None, 'Esta clase fue cancelada', None
 
     now = datetime.utcnow()
+    sincronizar_suspensiones_usuario(usuario_id, commit=True)
 
     if tipo == 'no_abonado':
-        susp = Suspension.query.filter_by(usuario_id=usuario_id, activa=True, tipo='no_abonado').first()
-        if susp:
-            return None, 'Cliente suspendido como no abonado', None
+        if tiene_suspension_no_abonado(usuario_id):
+            return None, 'Tenes una suspension activa para clases sueltas. Debes pagarla antes de hacer nuevas reservas.', None
+    elif tipo == 'abonado' and tiene_suspension_abonado_para_clase(usuario_id, clase):
+        return None, 'Tenes una suspension activa para este turno. Debes pagarla antes de volver a abonarte.', None
 
     if clase.cupos_disponibles() <= 0:
         ya = ListaEspera.query.filter_by(
@@ -89,6 +96,32 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
     return reserva, monto, False
 
 
+def crear_reserva_interna(data, actor_id):
+    target_user_id = int(data.get('usuario_id'))
+    clase_id = int(data.get('clase_id'))
+    tipo = data.get('tipo', 'no_abonado')
+    monto_pagar = data.get('monto_pagar', 'senia')
+    metodo_pago = data.get('metodo_pago', 'efectivo')
+
+    resultado, extra, alerta = crear_reserva_unica(
+        target_user_id,
+        clase_id,
+        tipo,
+        int(actor_id),
+        metodo_pago=metodo_pago,
+        monto_pagar=monto_pagar
+    )
+
+    if resultado is None:
+        return jsonify({'error': extra}), 400
+    if resultado == 'espera':
+        return jsonify({'mensaje': 'Sin cupo. Cliente anadido a la lista de espera.', 'en_espera': True, 'alerta_admin': alerta}), 200
+    if resultado == 'espera_ya':
+        return jsonify({'mensaje': 'El cliente ya estaba en la lista de espera', 'en_espera': True}), 200
+
+    return jsonify({'reserva': resultado.to_dict(), 'monto_a_pagar': extra}), 201
+
+
 @reservas_bp.route('/mis-lista-espera', methods=['GET'])
 @jwt_required()
 def get_mis_lista_espera():
@@ -106,8 +139,10 @@ def get_mis_reservas():
     user = Usuario.query.get(int(user_id))
     target_id = request.args.get('usuario_id')
     if target_id and user.rol in ('empleado', 'administrador'):
+        sincronizar_suspensiones_usuario(int(target_id), commit=True)
         reservas = Reserva.query.filter_by(usuario_id=int(target_id)).order_by(Reserva.fecha_creacion.desc()).all()
     else:
+        sincronizar_suspensiones_usuario(int(user_id), commit=True)
         reservas = Reserva.query.filter_by(usuario_id=int(user_id)).order_by(Reserva.fecha_creacion.desc()).all()
     return jsonify([r.to_dict() for r in reservas]), 200
 
@@ -117,6 +152,7 @@ def get_mis_reservas():
 def get_pagos_resumen():
     user_id = int(get_jwt_identity())
     hoy = date.today()
+    sincronizar_suspensiones_usuario(user_id, commit=True)
 
     pendientes = []
     pagados = []
@@ -232,6 +268,10 @@ def crear_abono():
     if not primer_clase:
         return jsonify({'error': 'No se enviaron clases válidas para el abono.'}), 400
 
+    sincronizar_suspensiones_usuario(target_user_id, commit=True)
+    if tiene_suspension_abonado_para_clase(target_user_id, primer_clase):
+        return jsonify({'error': 'El cliente tiene una suspension activa para este turno'}), 403
+
     # 1. Creamos la entidad padre Abono
     nuevo_abono = Abono(
         usuario_id=target_user_id,
@@ -252,6 +292,8 @@ def crear_abono():
     for clase_id in clases_ids:
         clase = Clase.query.get(clase_id)
         if not clase or clase.cancelada:
+            continue
+        if tiene_suspension_abonado_para_clase(target_user_id, clase):
             continue
 
         existente = Reserva.query.filter_by(usuario_id=target_user_id, clase_id=clase_id, estado='activa').first()
@@ -380,6 +422,16 @@ def registrar_pago_abono(abono_id):
     if abono.monto_pagado >= abono.monto_total:
         for r in abono.reservas:
             r.monto_pagado = r.monto_total
+            if r.estado == 'suspendida':
+                r.estado = 'activa'
+        suspensiones = Suspension.query.filter_by(
+            abono_id=abono.id,
+            tipo='abonado',
+            activa=True
+        ).all()
+        for susp in suspensiones:
+            susp.activa = False
+            susp.fecha_levantamiento = datetime.utcnow()
 
     db.session.commit()
     return jsonify({'pago': pago.to_dict(), 'abono': abono.to_dict()}), 201

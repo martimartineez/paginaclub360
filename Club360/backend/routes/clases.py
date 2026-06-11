@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Clase, Actividad, Reserva, ListaEspera, Usuario
 from datetime import datetime, date
+from suspensiones_logic import sincronizar_suspensiones_usuario, tiene_suspension_abonado_para_clase
 import calendar
 
 clases_bp = Blueprint('clases', __name__)
@@ -103,6 +104,7 @@ def get_horarios_disponibles():
     # Clases donde el usuario ya tiene reserva activa (no cuentan como disponibles para el)
     clases_ya_inscripto = set()
     if usuario_id:
+        sincronizar_suspensiones_usuario(usuario_id, commit=True)
         reservas_usuario = Reserva.query.filter_by(
             usuario_id=usuario_id, estado='activa'
         ).all()
@@ -110,6 +112,8 @@ def get_horarios_disponibles():
 
     opciones = {}
     for c in clases:
+        if usuario_id and tiene_suspension_abonado_para_clase(usuario_id, c):
+            continue
         key = f"{c.fecha.weekday()}_{c.hora_inicio.strftime('%H:%M')}"
         if key not in opciones:
             opciones[key] = {
@@ -165,15 +169,21 @@ def get_detalle_abono():
     # Verificar si el usuario ya está inscripto en alguna de estas clases
     from models import Reserva
     clases_ya_inscripto = set()
+    clases_suspendidas = set()
     if usuario_id:
+        sincronizar_suspensiones_usuario(usuario_id, commit=True)
         reservas_usuario = Reserva.query.filter_by(
             usuario_id=usuario_id, estado='activa'#, tipo='abonado'
         ).all()
         clases_ya_inscripto = {r.clase_id for r in reservas_usuario}
+        clases_suspendidas = {
+            c.id for c in clases_mes
+            if tiene_suspension_abonado_para_clase(usuario_id, c)
+        }
 
     clases_disponibles = [
         c for c in clases_mes
-        if not c.cancelada and c.cupos_disponibles() > 0 and c.id not in clases_ya_inscripto
+        if not c.cancelada and c.cupos_disponibles() > 0 and c.id not in clases_ya_inscripto and c.id not in clases_suspendidas
     ]
     clases_ya_en = [c for c in clases_mes if c.id in clases_ya_inscripto]
     total_clases = len(clases_mes)
@@ -211,7 +221,8 @@ def get_detalle_abono():
     detalle_clases = []
     for c in clases_mes:
         ya_inscripto = c.id in clases_ya_inscripto
-        disponible = not c.cancelada and c.cupos_disponibles() > 0 and not ya_inscripto
+        suspendida = c.id in clases_suspendidas
+        disponible = not c.cancelada and c.cupos_disponibles() > 0 and not ya_inscripto and not suspendida
         sin_cupo = not c.cancelada and c.cupos_disponibles() <= 0 and not ya_inscripto
         en_espera = sin_cupo and c.id in clases_en_espera_usuario
         detalle_clases.append({
@@ -222,6 +233,7 @@ def get_detalle_abono():
             'cupos_disponibles': c.cupos_disponibles(),
             'cancelada': c.cancelada,
             'ya_inscripto': ya_inscripto,
+            'suspendida': suspendida,
             'incluida_en_abono': disponible,
             'en_espera': en_espera,
             'precio_clase': precio_por_clase if disponible else 0
@@ -337,6 +349,12 @@ def get_inscriptos(clase_id):
     for r in reservas:
         d = r.to_dict()
         d['usuario'] = r.cliente.to_dict()
+        d['habilitado'] = not (
+            r.tipo == 'abonado'
+            and tiene_suspension_abonado_para_clase(r.usuario_id, r.clase)
+        )
+        if not d['habilitado']:
+            d['estado_habilitacion'] = 'suspendido'
         result.append(d)
     return jsonify(result), 200
 
