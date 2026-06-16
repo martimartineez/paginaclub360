@@ -162,7 +162,56 @@
 
       <div class="seccion" style="margin-top:32px">
         <div class="seccion-header">
-          <h3>✅ Pagado</h3>
+          <h3>Creditos</h3>
+          <span class="badge badge-blue" v-if="creditos.length">{{ creditos.length }}</span>
+          <span class="badge badge-green" v-else>Sin creditos</span>
+        </div>
+
+        <div v-if="creditos.length === 0" class="empty-card card">
+          <p>No tenes creditos disponibles.</p>
+        </div>
+
+        <div v-else class="pagos-lista">
+          <div v-for="c in creditos" :key="'credito-' + c.id" class="pago-card card credito-card">
+            <div class="pago-header">
+              <span class="sport-emoji">{{ sportEmoji(c.actividad) }}</span>
+              <div class="pago-info">
+                <div class="pago-titulo">
+                  <h4>{{ c.actividad }}</h4>
+                  <span class="badge" :class="c.estado === 'disponible' ? 'badge-green' : 'badge-blue'">
+                    {{ c.estado }}
+                  </span>
+                </div>
+                <p class="pago-fecha">
+                  {{ c.origen_label }} <span v-if="c.fecha_creacion">- {{ formatFecha(c.fecha_creacion.slice(0, 10)) }}</span>
+                </p>
+              </div>
+              <div class="pago-monto-col">
+                <span class="monto-pagado-ok">${{ c.monto_restante?.toLocaleString() }}</span>
+                <span class="monto-label">disponible</span>
+              </div>
+            </div>
+            <div class="credito-detalle-grid">
+              <div>
+                <span class="detalle-label">Monto original</span>
+                <strong>${{ c.monto?.toLocaleString() }}</strong>
+              </div>
+              <div>
+                <span class="detalle-label">Disponible</span>
+                <strong>${{ c.monto_restante?.toLocaleString() }}</strong>
+              </div>
+              <div>
+                <span class="detalle-label">Uso</span>
+                <strong>{{ c.estado === 'disponible' ? 'Para clase suelta de la misma actividad' : 'Usado' }}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="seccion" style="margin-top:32px">
+        <div class="seccion-header">
+          <h3>Pagado</h3>
           <span class="badge badge-blue">{{ pagados.length }}</span>
         </div>
 
@@ -281,6 +330,7 @@ const loading = ref(true)
 const pendientes = ref([])
 const pagados = ref([])
 const suspensiones = ref([])
+const creditos = ref([])
 const tarjetas = ref([])
 const tarjetaSeleccionada = ref(null)
 const mostrarNuevaTarjeta = ref(false)
@@ -337,6 +387,15 @@ async function fetchSuspensiones() {
     suspensiones.value = data
   } catch (e) {
     error.value = e.response?.data?.error || 'Error al cargar suspensiones'
+  }
+}
+
+async function fetchCreditos() {
+  try {
+    const { data } = await api.get('/creditos/mis')
+    creditos.value = data
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Error al cargar creditos'
   }
 }
 
@@ -409,7 +468,7 @@ async function ejecutarPago() {
 
     pagoModal.value = null
     tarjetaSeleccionada.value = tarjetas.value[0] || null
-    await Promise.all([fetchPagos(), fetchSuspensiones()])
+    await Promise.all([fetchPagos(), fetchSuspensiones(), fetchCreditos()])
   } catch (e) {
     errPago.value = e.response?.data?.error || 'Error al procesar el pago'
   } finally {
@@ -418,7 +477,7 @@ async function ejecutarPago() {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchPagos(), fetchTarjetas(), fetchSuspensiones()])
+  await Promise.all([fetchPagos(), fetchTarjetas(), fetchSuspensiones(), fetchCreditos()])
 })
 </script>
 
@@ -521,13 +580,20 @@ onMounted(async () => {
 
 .pago-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
 .suspension-card { border-color: rgba(218,54,51,0.28); }
+.credito-card { border-color: rgba(88,166,255,0.25); }
 .suspension-detalle-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
   gap: 10px;
   margin-bottom: 12px;
 }
-.suspension-detalle-grid > div {
+.credito-detalle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 10px;
+}
+.suspension-detalle-grid > div,
+.credito-detalle-grid > div {
   background: var(--dark-3);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -546,6 +612,7 @@ onMounted(async () => {
 
 @media (max-width: 768px) {
   .suspension-detalle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .credito-detalle-grid { grid-template-columns: 1fr; }
 }
 
 .modal-overlay {

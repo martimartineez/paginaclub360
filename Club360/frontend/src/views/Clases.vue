@@ -239,10 +239,25 @@
               <p style="font-size:12px;color:var(--text-muted)">Pagás todo ahora, no debés nada al llegar</p>
             </div>
           </div>
+          <div
+            v-if="creditoDisponibleActividad > 0"
+            class="pago-opcion"
+            :class="{ selected: montoPago === 'credito' }"
+            @click="montoPago = 'credito'"
+          >
+            <div class="pago-radio">{{ montoPago === 'credito' ? '●' : '○' }}</div>
+            <div>
+              <p style="font-weight:600">Pagar con crédito</p>
+              <p style="font-size:12px;color:var(--text-muted)">
+                Tenés {{ creditoDisponibleActividad }} crédito(s) para {{ seleccion.actividad?.nombre }}.
+                Se consume 1 crédito completo para esta reserva.
+              </p>
+            </div>
+          </div>
         </div>
 
           <button class="btn btn-primary" style="width:100%;max-width:440px;margin-top:16px" @click="paso = 5; fetchTarjetas()">
-            Ir a pagar ${{ montoPago === 'senia' ? Math.round(seleccion.actividad?.precio_clase * 0.5).toLocaleString() : seleccion.actividad?.precio_clase?.toLocaleString() }} →
+            {{ textoBotonClaseSuelta }}
           </button>
       </div>
 
@@ -349,9 +364,7 @@
           <button class="btn btn-primary" style="width:100%;max-width:500px;margin-top:16px"
             @click="detalleAbono.total_disponibles === 0 ? confirmarPago() : (paso = 5, fetchTarjetas())"
             :disabled="!detalleAbono.clases?.some(c => !c.cancelada && !c.ya_inscripto) || pagando">
-            {{ pagando ? 'Procesando...' : detalleAbono.total_disponibles === 0
-              ? `Anotarme en lista de espera →`
-              : `Ir a pagar $${detalleAbono.monto_total?.toLocaleString()} →` }}
+            {{ textoBotonAbono }}
           </button>
         </div>
       </div>
@@ -407,7 +420,15 @@
 
         <!-- PAGO NORMAL CON TARJETA -->
         <template v-else>
-          <div v-if="tarjetas.length === 0" style="max-width:440px">
+          <div v-if="seleccion.tipo === 'no_abonado' && montoPago === 'credito' && montoFinal <= 0" style="max-width:440px">
+            <div class="alert alert-success" style="margin-bottom:16px">
+              El crédito cubre el monto seleccionado. Confirmá la reserva sin cargar tarjeta.
+            </div>
+            <button class="btn btn-primary" style="width:100%" @click="confirmarPago" :disabled="pagando">
+              {{ pagando ? 'Procesando...' : 'Confirmar reserva' }}
+            </button>
+          </div>
+          <div v-else-if="tarjetas.length === 0" style="max-width:440px">
             <div class="alert alert-warning">No tenés ninguna tarjeta registrada. Agregá una para continuar.</div>
             <FormTarjeta label-boton="Guardar tarjeta" :show-cancelar="false" @guardada="onTarjetaGuardada" />
           </div>
@@ -453,6 +474,10 @@
           <div v-if="seleccion.tipo === 'abonado' && resultadoExito?.clases_en_espera?.length > 0" class="confirm-row">
             <span class="confirm-label" style="color:var(--warning)">⏳ En lista de espera</span>
             <span class="confirm-value" style="color:var(--warning)">{{ resultadoExito.clases_en_espera.length }} clase(s)</span>
+          </div>
+          <div v-if="resultadoExito?.credito_usado > 0" class="confirm-row">
+            <span class="confirm-label">Crédito usado</span>
+            <span class="confirm-value">{{ resultadoExito.credito_usado }} crédito</span>
           </div>
           <div class="confirm-row total-row"><span class="confirm-label">Pagado</span><span class="confirm-value total-value">${{ montoFinal?.toLocaleString() }}</span></div>
         </div>
@@ -534,7 +559,8 @@ const mostrarNuevaTarjeta = ref(false)
 const pagando = ref(false)
 const errorPago = ref('')
 const resultadoExito = ref(null)
-const montoPago = ref('senia') // 'senia' o 'total' para clase individual
+const montoPago = ref('senia') // 'senia', 'total' o 'credito' para clase individual
+const creditos = ref([])
 const abonoDiaSeleccionado = ref(null)
 const clasesAdmin = ref([])
 const filtros = ref({ actividad_id: '', desde: '', hasta: '' })
@@ -546,7 +572,21 @@ const montoFinal = computed(() => {
     return detalleAbono.value?.monto_total || 0
   }
   const precio = seleccion.value.actividad?.precio_clase || 0
+  if (montoPago.value === 'credito') return 0
   return montoPago.value === 'senia' ? Math.round(precio * 0.5) : precio
+})
+
+const creditoDisponibleActividad = computed(() => {
+  const actividadId = seleccion.value.actividad?.id
+  if (!actividadId) return 0
+  return creditos.value
+    .filter(c => c.actividad_id === actividadId && c.estado === 'disponible')
+    .length
+})
+
+const textoBotonClaseSuelta = computed(() => {
+  if (montoPago.value === 'credito') return 'Confirmar con credito'
+  return `Ir a pagar $${montoFinal.value?.toLocaleString()}`
 })
 
 // Si hoy es entre 1 y 10 del mes, el abono se inscribe sin pagar (pago diferido hasta el 10)
@@ -555,6 +595,12 @@ const esPeriodoGracia = computed(() => {
   return dia >= 1 && dia <= 10
 })
 
+
+const textoBotonAbono = computed(() => {
+  if (pagando.value) return 'Procesando...'
+  if (detalleAbono.value?.total_disponibles === 0) return 'Anotarme en lista de espera'
+  return `Ir a pagar $${detalleAbono.value?.monto_total?.toLocaleString()}`
+})
 
 // Agrupa horariosAbono por día para mostrar primero días, luego horarios
 const diasAbono = computed(() => {
@@ -587,6 +633,7 @@ function formatFechaCorta(f) {
 
 function elegirDeporte(a) {
   seleccion.value = { actividad: a, tipo: null, fecha: null, clase: null, opcionAbono: null }
+  montoPago.value = 'senia'
   paso.value = 2
 }
 
@@ -597,8 +644,12 @@ function elegirTipo(tipo) {
   seleccion.value.opcionAbono = null
   detalleAbono.value = null
   abonoDiaSeleccionado.value = null
+  montoPago.value = 'senia'
   paso.value = 3
-  if (tipo === 'no_abonado') fetchFechasDisponibles()
+  if (tipo === 'no_abonado') {
+    fetchFechasDisponibles()
+    fetchCreditos()
+  }
   else fetchHorariosAbono()
 }
 
@@ -672,6 +723,15 @@ async function fetchTarjetas() {
   } catch {}
 }
 
+async function fetchCreditos() {
+  try {
+    const { data } = await api.get('/creditos/mis')
+    creditos.value = data
+  } catch {
+    creditos.value = []
+  }
+}
+
 function onTarjetaGuardada(t) {
   tarjetas.value.push(t)
   tarjetaSeleccionada.value = t
@@ -692,7 +752,6 @@ async function confirmarPago() {
         .filter(c => !c.incluida_en_abono && !c.ya_inscripto && !c.cancelada)
         .map(c => c.clase_id)
 
-      // Solo paga ahora si NO es periodo gracia Y hay clases con cupo disponible
       const pagoAhora = !esPeriodoGracia.value && clasesIds.length > 0
 
       const { data } = await api.post('/reservas/abono', {
@@ -702,14 +761,15 @@ async function confirmarPago() {
         aplicar_descuento: detalleAbono.value.aplicar_descuento,
         pago_diferido: esPeriodoGracia.value || clasesIds.length === 0
       })
-      resultadoExito.value = { ...data, pago_diferido: esPeriodoGracia.value }
+      resultadoExito.value = { ...data, pago_diferido: data.pago_diferido }
     } else {
       // Clase individual: siempre paga ahora
       const { data } = await api.post('/reservas/', {
         clase_id: seleccion.value.clase.id,
         tipo: 'no_abonado',
-        monto_pagar: montoPago.value,
-        metodo_pago: 'tarjeta_credito'
+        monto_pagar: montoPago.value === 'credito' ? 'total' : montoPago.value,
+        metodo_pago: montoFinal.value > 0 ? 'tarjeta_credito' : null,
+        usar_credito: montoPago.value === 'credito'
       })
       if (data.en_espera) {
         resultadoExito.value = { en_espera: true }

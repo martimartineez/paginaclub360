@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Usuario, Actividad, Asistencia, Reserva, Suspension, Pago
+from models import db, Usuario, Actividad, Asistencia, Reserva, Suspension, Pago, Credito
 from suspensiones_logic import (
     resolver_suspension_con_pago,
     sincronizar_suspensiones_usuario,
@@ -12,6 +12,7 @@ usuarios_bp = Blueprint('usuarios', __name__)
 actividades_bp = Blueprint('actividades', __name__)
 asistencia_bp = Blueprint('asistencia', __name__)
 suspensiones_bp = Blueprint('suspensiones', __name__)
+creditos_bp = Blueprint('creditos', __name__)
 
 
 def require_rol(*roles):
@@ -209,6 +210,21 @@ def update_actividad(aid):
             setattr(act, field, data[field])
     db.session.commit()
     return jsonify(act.to_dict()), 200
+
+
+# ---- CREDITOS ----
+
+@creditos_bp.route('/mis', methods=['GET'])
+@jwt_required()
+def mis_creditos():
+    user_id = int(get_jwt_identity())
+    creditos = (
+        Credito.query
+        .filter_by(usuario_id=user_id, origen='abono_cancelacion')
+        .order_by(Credito.fecha_creacion.desc())
+        .all()
+    )
+    return jsonify([c.to_dict() for c in creditos]), 200
 
 
 # ---- ASISTENCIA ----

@@ -713,14 +713,23 @@ function confirmarCancelarReserva(r) {
   modalCancelarReserva.value = r
 }
 
+function mensajeCancelacionReserva(data) {
+  const partes = [data.mensaje || 'Reserva cancelada']
+  if (data.info) partes.push(data.info)
+  if (data.credito_generado > 0) partes.push(`Credito generado: $${data.credito_generado.toLocaleString()}`)
+  if (data.descuento_aplicado > 0) partes.push(`Descuento aplicado: $${data.descuento_aplicado.toLocaleString()}`)
+  if (data.devolucion_senia > 0) partes.push(`Senia a devolver: $${data.devolucion_senia.toLocaleString()}`)
+  if (data.advertencia) partes.push(data.advertencia)
+  return partes.join(' - ')
+}
+
 async function ejecutarCancelarReserva() {
   cancelandoReserva.value = true
   err.value = ''
   try {
     const uid = parseInt(route.params.id)
     const { data } = await api.post(`/reservas/cliente/${uid}/cancelar/${modalCancelarReserva.value.id}`)
-    msg.value = data.mensaje || 'Reserva cancelada'
-    if (data.advertencia) msg.value += ' — ' + data.advertencia
+    msg.value = mensajeCancelacionReserva(data)
     modalCancelarReserva.value = null
     await fetchReservas()
   } catch (e) {

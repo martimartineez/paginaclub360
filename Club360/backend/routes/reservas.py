@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Reserva, Clase, Usuario, ListaEspera, Suspension, Pago, Abono
 from datetime import datetime, date
+from creditos_logic import aplicar_creditos_a_reserva, cancelar_reserva_con_creditos
 from suspensiones_logic import (
     sincronizar_suspensiones_usuario,
     tiene_suspension_abonado_para_clase,
@@ -26,7 +27,11 @@ def es_periodo_gracia():
     return 1 <= date.today().day <= 10
 
 
-def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, monto_pagar=None):
+def puede_diferir_pago_abono():
+    return es_periodo_gracia()
+
+
+def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, monto_pagar=None, usar_credito=False):
     clase = Clase.query.get(clase_id)
     if not clase:
         return None, 'Clase no encontrada', None
@@ -82,18 +87,30 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
     db.session.flush()
     reserva.qr_code = generar_qr(reserva.id)
 
-    if metodo_pago:
+    try:
+        monto_cubierto_por_credito = aplicar_creditos_a_reserva(reserva, monto) if tipo == 'no_abonado' and usar_credito else 0
+    except ValueError as exc:
+        db.session.rollback()
+        return None, str(exc), None
+    monto_cobrar = max(0, round(float(monto or 0) - float(monto_cubierto_por_credito or 0), 2))
+
+    if metodo_pago and monto_cobrar > 0:
         pago = Pago(
-            reserva_id=reserva.id, monto=monto,
+            reserva_id=reserva.id, monto=monto_cobrar,
             metodo=metodo_pago,
             tipo_pago='senia' if not senia_pagada else 'mensualidad',
             registrado_por=actor_id
         )
         db.session.add(pago)
-        reserva.monto_pagado = monto
+    reserva.monto_pagado = round(float(monto_cubierto_por_credito or 0) + (monto_cobrar if metodo_pago else 0), 2)
+    if reserva.monto_pagado >= float(reserva.monto_total or 0) * 0.5:
+        reserva.senia_pagada = True
 
     db.session.commit()
-    return reserva, monto, False
+    return reserva, {
+        'monto_a_pagar': monto_cobrar,
+        'credito_usado': 1 if monto_cubierto_por_credito else 0
+    }, False
 
 
 def crear_reserva_interna(data, actor_id):
@@ -102,6 +119,7 @@ def crear_reserva_interna(data, actor_id):
     tipo = data.get('tipo', 'no_abonado')
     monto_pagar = data.get('monto_pagar', 'senia')
     metodo_pago = data.get('metodo_pago', 'efectivo')
+    usar_credito = data.get('usar_credito', False)
 
     resultado, extra, alerta = crear_reserva_unica(
         target_user_id,
@@ -109,7 +127,8 @@ def crear_reserva_interna(data, actor_id):
         tipo,
         int(actor_id),
         metodo_pago=metodo_pago,
-        monto_pagar=monto_pagar
+        monto_pagar=monto_pagar,
+        usar_credito=usar_credito
     )
 
     if resultado is None:
@@ -119,7 +138,8 @@ def crear_reserva_interna(data, actor_id):
     if resultado == 'espera_ya':
         return jsonify({'mensaje': 'El cliente ya estaba en la lista de espera', 'en_espera': True}), 200
 
-    return jsonify({'reserva': resultado.to_dict(), 'monto_a_pagar': extra}), 201
+    pago_info = extra if isinstance(extra, dict) else {'monto_a_pagar': extra, 'credito_usado': 0}
+    return jsonify({'reserva': resultado.to_dict(), **pago_info}), 201
 
 
 @reservas_bp.route('/mis-lista-espera', methods=['GET'])
@@ -331,6 +351,13 @@ def crear_abono():
         reserva.qr_code = generar_qr(reserva.id)
         reservas_creadas.append(reserva)
 
+    pago_diferido_permitido = puede_diferir_pago_abono()
+    pago_diferido = bool(pago_diferido and pago_diferido_permitido)
+
+    if reservas_creadas and not pago_diferido and not metodo_pago:
+        db.session.rollback()
+        return jsonify({'error': 'Estas fuera del periodo de pago del 1 al 10. El abono debe abonarse en el momento.'}), 400
+
     # 3. Si no es diferido por periodo de gracia, se cobra el abono completo en el momento
     if not pago_diferido and metodo_pago and reservas_creadas:
         pago = Pago(
@@ -446,10 +473,11 @@ def crear_reserva():
     tipo = data.get('tipo', 'no_abonado')
     monto_pagar = data.get('monto_pagar', 'senia')
     metodo_pago = data.get('metodo_pago', 'tarjeta_credito')
+    usar_credito = data.get('usar_credito', False)
 
     resultado, extra, alerta = crear_reserva_unica(
         int(user_id), clase_id, tipo, int(user_id),
-        metodo_pago=metodo_pago, monto_pagar=monto_pagar
+        metodo_pago=metodo_pago, monto_pagar=monto_pagar, usar_credito=usar_credito
     )
 
     if resultado is None:
@@ -459,7 +487,8 @@ def crear_reserva():
     if resultado == 'espera_ya':
         return jsonify({'mensaje': 'Ya estabas en la lista de espera', 'en_espera': True}), 200
 
-    return jsonify({'reserva': resultado.to_dict(), 'monto_a_pagar': extra}), 201
+    pago_info = extra if isinstance(extra, dict) else {'monto_a_pagar': extra, 'credito_usado': 0}
+    return jsonify({'reserva': resultado.to_dict(), **pago_info}), 201
 
 
 @reservas_bp.route('/<int:reserva_id>', methods=['GET'])
@@ -484,6 +513,13 @@ def cancelar_reserva(reserva_id):
 
     if reserva.usuario_id != int(user_id) and user.rol not in ('empleado', 'administrador'):
         return jsonify({'error': 'Sin permisos'}), 403
+    try:
+        resultado = cancelar_reserva_con_creditos(reserva)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    db.session.commit()
+    return jsonify(resultado), 200
+
     if reserva.estado != 'activa':
         return jsonify({'error': 'La reserva no está activa'}), 400
 
@@ -525,6 +561,13 @@ def cancelar_reserva_cliente(uid, reserva_id):
     reserva = Reserva.query.get_or_404(reserva_id)
     if reserva.usuario_id != uid:
         return jsonify({'error': 'La reserva no pertenece a este cliente'}), 400
+    try:
+        resultado = cancelar_reserva_con_creditos(reserva)
+        resultado['mensaje'] = 'Reserva cancelada por empleado/administrador'
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    db.session.commit()
+    return jsonify(resultado), 200
     if reserva.estado != 'activa':
         return jsonify({'error': 'La reserva no está activa'}), 400
 

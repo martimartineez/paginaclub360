@@ -13,7 +13,7 @@ from models import db
 from routes.auth import auth_bp
 from routes.clases import clases_bp
 from routes.reservas import reservas_bp
-from routes.otros import usuarios_bp, actividades_bp, asistencia_bp, suspensiones_bp
+from routes.otros import usuarios_bp, actividades_bp, asistencia_bp, suspensiones_bp, creditos_bp
 from routes.turnos import turnos_bp
 
 def create_app():
@@ -35,6 +35,7 @@ def create_app():
     app.register_blueprint(actividades_bp, url_prefix='/api/actividades')
     app.register_blueprint(asistencia_bp, url_prefix='/api/asistencia')
     app.register_blueprint(suspensiones_bp, url_prefix='/api/suspensiones')
+    app.register_blueprint(creditos_bp, url_prefix='/api/creditos')
     app.register_blueprint(turnos_bp, url_prefix='/api/turnos')
 
     @app.cli.command("reset-db")

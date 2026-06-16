@@ -303,6 +303,16 @@ function formatFecha(fechaStr) {
   return `${d}/${m}/${y}`
 }
 
+function mensajeCancelacion(data) {
+  const partes = [data.mensaje || 'Reserva cancelada']
+  if (data.info) partes.push(data.info)
+  if (data.credito_generado > 0) partes.push(`Credito generado: $${data.credito_generado.toLocaleString()}`)
+  if (data.descuento_aplicado > 0) partes.push(`Descuento aplicado: $${data.descuento_aplicado.toLocaleString()}`)
+  if (data.devolucion_senia > 0) partes.push(`Senia a devolver: $${data.devolucion_senia.toLocaleString()}`)
+  if (data.advertencia) partes.push(data.advertencia)
+  return partes.join(' - ')
+}
+
 function abrirEditarCupo() {
   nuevoCupo.value = clase.value.cupo_maximo
   modalEditarCupo.value = true
@@ -359,7 +369,9 @@ async function reservar(tipo) {
     if (data.en_espera) {
       mensaje.value = data.mensaje
     } else {
-      mensaje.value = 'Reserva creada exitosamente'
+      mensaje.value = data.credito_usado > 0
+        ? `Reserva creada exitosamente. Se aplico credito por $${data.credito_usado.toLocaleString()}.`
+        : 'Reserva creada exitosamente'
       miReserva.value = data.reserva
     }
     reservando.value = false
@@ -408,7 +420,7 @@ async function cancelarReserva() {
   error.value = ''
   try {
     const { data } = await api.post(`/reservas/${miReserva.value.id}/cancelar`)
-    mensaje.value = data.mensaje || 'Reserva cancelada'
+    mensaje.value = mensajeCancelacion(data)
     confirmarCancelarReserva.value = false
     miReserva.value = null
     await fetchClase()

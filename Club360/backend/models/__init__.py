@@ -21,6 +21,7 @@ class Usuario(db.Model):
 
     reservas = db.relationship('Reserva', backref='cliente', lazy=True, foreign_keys='Reserva.usuario_id')
     listas_espera = db.relationship('ListaEspera', backref='cliente', lazy=True)
+    creditos = db.relationship('Credito', backref='usuario', lazy=True)
 
     def set_password(self, password):
         self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -51,6 +52,7 @@ class Actividad(db.Model):
     activa = db.Column(db.Boolean, default=True)
 
     clases = db.relationship('Clase', backref='actividad', lazy=True)
+    creditos = db.relationship('Credito', backref='actividad', lazy=True)
 
     def to_dict(self):
         return {
@@ -271,6 +273,44 @@ class Pago(db.Model):
             'metodo': self.metodo,
             'tipo_pago': self.tipo_pago,
             'fecha': self.fecha.isoformat() if self.fecha else None
+        }
+
+
+class Credito(db.Model):
+    __tablename__ = 'creditos'
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    actividad_id = db.Column(db.Integer, db.ForeignKey('actividades.id'), nullable=False)
+    monto = db.Column(db.Numeric(10, 2), nullable=False)
+    monto_restante = db.Column(db.Numeric(10, 2), nullable=False)
+    origen = db.Column(
+        db.Enum('abono_cancelacion', 'clase_suelta_cancelacion', name='origen_credito_enum'),
+        nullable=False
+    )
+    reserva_origen_id = db.Column(db.Integer, db.ForeignKey('reservas.id'), nullable=True)
+    reserva_uso_id = db.Column(db.Integer, db.ForeignKey('reservas.id'), nullable=True)
+    estado = db.Column(db.Enum('disponible', 'usado', 'vencido', name='estado_credito_enum'), default='disponible')
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_uso = db.Column(db.DateTime)
+
+    reserva_origen = db.relationship('Reserva', foreign_keys=[reserva_origen_id], backref='creditos_generados')
+    reserva_uso = db.relationship('Reserva', foreign_keys=[reserva_uso_id], backref='creditos_usados')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'usuario_id': self.usuario_id,
+            'actividad_id': self.actividad_id,
+            'actividad': self.actividad.nombre if self.actividad else None,
+            'monto': float(self.monto) if self.monto else 0,
+            'monto_restante': float(self.monto_restante) if self.monto_restante else 0,
+            'origen': self.origen,
+            'origen_label': 'Cancelacion de abono' if self.origen == 'abono_cancelacion' else 'Cancelacion de clase suelta',
+            'reserva_origen_id': self.reserva_origen_id,
+            'reserva_uso_id': self.reserva_uso_id,
+            'estado': self.estado,
+            'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
+            'fecha_uso': self.fecha_uso.isoformat() if self.fecha_uso else None
         }
 
 

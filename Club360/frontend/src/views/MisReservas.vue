@@ -55,6 +55,21 @@
         </div>
 
         <!-- QR Code -->
+        <div class="reserva-actions" v-if="r.estado === 'activa'">
+          <button class="btn btn-outline btn-sm" @click="toggleQR(r)">
+            {{ qrVisible === r.id ? 'Ocultar QR' : 'Ver QR' }}
+          </button>
+          <button
+            v-if="esReservaFutura(r)"
+            class="btn btn-danger btn-sm"
+            @click="confirmarCancelar(r)"
+          >
+            Cancelar reserva
+          </button>
+        </div>
+        <div v-else class="reserva-actions">
+          <span class="badge badge-red">Cancelada</span>
+        </div>
         <div v-if="r.estado === 'activa' && qrVisible === r.id" class="qr-section">
           <p class="qr-label">Tu código QR de asistencia</p>
           <img :src="`data:image/png;base64,${r.qr_code}`" class="qr-img" />
@@ -190,6 +205,21 @@ function confirmarCancelar(r) {
   cancelarModal.value = r
 }
 
+function esReservaFutura(r) {
+  if (!r?.clase?.fecha || !r?.clase?.hora_inicio) return false
+  return new Date(`${r.clase.fecha}T${r.clase.hora_inicio}:00`) > new Date()
+}
+
+function mensajeCancelacion(data) {
+  const partes = [data.mensaje || 'Reserva cancelada']
+  if (data.info) partes.push(data.info)
+  if (data.credito_generado > 0) partes.push(`Credito generado: $${data.credito_generado.toLocaleString()}`)
+  if (data.descuento_aplicado > 0) partes.push(`Descuento aplicado: $${data.descuento_aplicado.toLocaleString()}`)
+  if (data.devolucion_senia > 0) partes.push(`Senia a devolver: $${data.devolucion_senia.toLocaleString()}`)
+  if (data.advertencia) partes.push(data.advertencia)
+  return partes.join(' - ')
+}
+
 async function realizarPago() {
   pagoLoading.value = true
   try {
@@ -212,8 +242,7 @@ async function ejecutarCancelacion() {
   cancelandoLoading.value = true
   try {
     const { data } = await api.post(`/reservas/${cancelarModal.value.id}/cancelar`)
-    mensaje.value = data.mensaje || 'Reserva cancelada'
-    if (data.advertencia) mensaje.value += ' — ' + data.advertencia
+    mensaje.value = mensajeCancelacion(data)
     cancelarModal.value = null
     await fetchReservas()
   } catch (e) {
