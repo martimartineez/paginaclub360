@@ -40,7 +40,7 @@
           <tr><th>Nombre</th><th>DNI</th><th>Email</th><th>Rol</th><th>Suspensiones</th><th>Acciones</th></tr>
         </thead>
         <tbody>
-          <tr v-for="u in usuarios" :key="u.id">
+          <tr v-for="u in listaUsuarios" :key="u.id">
             <td>{{ u.nombre }} {{ u.apellido }}</td>
             <td style="color:var(--text-muted)">{{ u.dni }}</td>
             <td style="color:var(--text-muted);font-size:13px">{{ u.email }}</td>
@@ -108,7 +108,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import api from '../../api.js'
 import FormRegistrar from '../../components/FormRegistrar.vue'
@@ -162,6 +162,12 @@ async function fetchUsuarios() {
   }
 }
  
+const listaUsuarios = computed(() => {
+  return usuarios.value.filter((u => u.activo));
+})
+
+
+
 async function registrarUsuario() {
   if (!formRef.value?.isFormValido) return
  
@@ -202,7 +208,7 @@ async function ejecutarBorrado() {
     borrando.value = false
   }
 }
- 
+
 onMounted(fetchUsuarios)
 </script>
 
