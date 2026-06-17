@@ -90,18 +90,9 @@
         <h3>
           {{ rolRegistrando === 'cliente' ? '👤 Registrar Cliente' : '🧑‍💼 Registrar Empleado' }}
         </h3>
-        <div class="alert alert-error" v-if="regError">{{ regError }}</div>
-        <div class="grid-2">
-          <div class="input-group"><label>Nombre</label><input v-model="regForm.nombre" /></div>
-          <div class="input-group"><label>Apellido</label><input v-model="regForm.apellido" /></div>
-        </div>
-        <div class="input-group"><label>DNI</label><input v-model="regForm.dni" placeholder="Sin puntos ni guiones" /></div>
-        <div class="input-group"><label>Email</label><input v-model="regForm.email" type="email" /></div>
-        <div class="input-group"><label>Fecha de nacimiento</label><input v-model="regForm.fecha_nacimiento" type="date" /></div>
-        <div class="input-group">
-          <label>Contraseña inicial</label>
-          <input v-model="regForm.password" type="password" placeholder="Mínimo 6 caracteres" />
-        </div>
+
+        <FormRegistrar ref="formRef" />
+
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
           El usuario podrá cambiar su contraseña desde su perfil.
         </p>
@@ -120,6 +111,7 @@
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import api from '../../api.js'
+import FormRegistrar from '../../components/FormRegistrar.vue'
 
 const auth = useAuthStore()
 const usuarios = ref([])
@@ -131,30 +123,28 @@ const regMsg = ref('')
 const detalleSimple = ref(null)
 const modalRegistrar = ref(false)
 const rolRegistrando = ref('cliente')
-const regForm = ref({ nombre: '', apellido: '', dni: '', email: '', password: '', fecha_nacimiento: '' })
-const regError = ref('')
 const regLoading = ref(false)
 const modalBorrar = ref(null)
 const borrando = ref(false)
-
+ 
+// Ref al componente hijo
+const formRef = ref(null)
+ 
 function rolBadge(rol) {
   return { 'administrador': 'badge-green', 'empleado': 'badge-blue', 'cliente': 'badge-yellow' }[rol] || 'badge-yellow'
 }
-
+ 
 function verDetalleSimple(u) { detalleSimple.value = u }
-
+ 
 function abrirRegistro(rol) {
   rolRegistrando.value = rol
-  regForm.value = { nombre: '', apellido: '', dni: '', email: '', password: '', fecha_nacimiento: '' }
-  regError.value = ''
   modalRegistrar.value = true
 }
-
+ 
 function cerrarModal() {
   modalRegistrar.value = false
-  regError.value = ''
 }
-
+ 
 async function fetchUsuarios() {
   loading.value = true
   error.value = ''
@@ -171,31 +161,33 @@ async function fetchUsuarios() {
     loading.value = false
   }
 }
-
+ 
 async function registrarUsuario() {
-  if (!regForm.value.nombre || !regForm.value.apellido || !regForm.value.dni || !regForm.value.email || !regForm.value.password || !regForm.value.fecha_nacimiento) {
-    regError.value = 'Completá todos los campos'
-    return
-  }
+  if (!formRef.value?.isFormValido) return
+ 
   regLoading.value = true
-  regError.value = ''
+  formRef.value.errorGlobal = ''
+ 
   try {
-    const res = await api.post('/auth/register', { ...regForm.value, rol: rolRegistrando.value })
+    const res = await api.post('/auth/register', {
+      ...formRef.value.form,
+      rol: rolRegistrando.value
+    })
     regMsg.value = `${rolRegistrando.value === 'cliente' ? 'Cliente' : 'Empleado'} ${res.data.reactivado ? 'reactivado' : 'registrado'} correctamente`
     cerrarModal()
     fetchUsuarios()
     setTimeout(() => regMsg.value = '', 3000)
   } catch (e) {
-    regError.value = e.response?.data?.error || 'Error al registrar'
+    formRef.value.errorGlobal = e.response?.data?.error || 'Error al registrar'
   } finally {
     regLoading.value = false
   }
 }
-
+ 
 function confirmarBorrar(u) {
   modalBorrar.value = u
 }
-
+ 
 async function ejecutarBorrado() {
   borrando.value = true
   try {
@@ -210,7 +202,7 @@ async function ejecutarBorrado() {
     borrando.value = false
   }
 }
-
+ 
 onMounted(fetchUsuarios)
 </script>
 
