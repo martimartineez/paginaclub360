@@ -171,7 +171,9 @@ def rechazar_cupo_lista_espera(lista_espera_id):
     except BadSignature:
         return redirect_rechazo_lista_espera('invalido')
 
-    lista = ListaEspera.query.get_or_404(lista_espera_id)
+    lista = db.session.get(ListaEspera, lista_espera_id)
+    if not lista:
+        return redirect_rechazo_lista_espera('invalido')
     if (
         payload.get('lista_espera_id') != lista.id or
         payload.get('usuario_id') != lista.usuario_id or

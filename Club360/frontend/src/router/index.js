@@ -7,6 +7,7 @@ const routes = [
   { path: '/registro', component: () => import('../views/Registro.vue') },
   { path: '/clases', component: () => import('../views/Clases.vue') },
   { path: '/clases/:id', component: () => import('../views/DetalleClase.vue') },
+  { path: '/lista-espera/rechazo', component: () => import('../views/RechazoListaEspera.vue') },
   { path: '/mis-reservas', component: () => import('../views/MisReservas.vue'), meta: { requiresAuth: true } },
   { path: '/mis-pagos', component: () => import('../views/MisPagos.vue'), meta: { requiresAuth: true, roles: ['cliente'] } },
   { path: '/perfil', component: () => import('../views/Perfil.vue'), meta: { requiresAuth: true } },
