@@ -38,69 +38,16 @@
       <div v-if="paso === 1">
         <div class="alert alert-error" v-if="error">{{ error }}</div>
 
-        <form @submit.prevent="handleRegister">
-          <div class="grid-2">
-            <div class="input-group">
-              <label>Nombre</label>
-              <input v-model="form.nombre" placeholder="Juan" required />
-            </div>
-
-            <div class="input-group">
-              <label>Apellido</label>
-              <input v-model="form.apellido" placeholder="Pérez" required />
-            </div>
-          </div>
-          <p v-if="errorNombre" class="field-error">{{ errorNombre }}</p>
-
-          <div class="input-group">
-            <label>DNI</label>
-            <input v-model="form.dni" placeholder="12345678" required />
-            <p v-if="errorDni" class="field-error">{{ errorDni }}</p>
-          </div>
-
-          <div class="input-group">
-            <label>Email</label>
-            <input
-              v-model="form.email"
-              type="email"
-              placeholder="tu@email.com"
-              required
-            />
-            <p v-if="errorEmail" class="field-error">{{ errorEmail }}</p>
-          </div>
-
-          <div class="input-group">
-            <label>Contraseña</label>
-            <input
-              v-model="form.password"
-              type="password"
-              placeholder="Mínimo 8 caracteres"
-              required
-              minlength="8"
-            />
-            <p v-if="errorPassword" class="field-error">{{ errorPassword }}</p>
-          </div>
-
-          <div class="input-group">
-            <label>Fecha de nacimiento</label>
-            <input
-              v-model="form.fecha_nacimiento"
-              type="date"
-              :max="maxFechaNacimiento"
-              required
-            />
-            <p v-if="errorFecha" class="field-error">{{ errorFecha }}</p>
-          </div>
+          <FormRegistrar ref="formRef" />
 
           <button
             class="btn btn-primary"
             style="width: 100%"
-            :disabled="loading || !isFormValido"
-            type="submit"
+            :disabled="loading || !formRef?.isFormValido"
+            @click="handleRegister"
           >
             {{ loading ? "Registrando..." : "Continuar →" }}
           </button>
-        </form>
       </div>
 
       <div v-if="paso === 2">
@@ -137,132 +84,31 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth.js";
 import FormTarjeta from "../components/FormTarjeta.vue";
-
+import FormRegistrar from "../components/FormRegistrar.vue";
 import logo from "../assets/logo.png";
 
 const auth = useAuthStore();
 const router = useRouter();
 
 const paso = ref(1);
-
-const form = ref({
-  nombre: "",
-  apellido: "",
-  dni: "",
-  email: "",
-  password: "",
-  fecha_nacimiento: "",
-});
-
-const error = ref("");
+const formRef = ref(null);
 const loading = ref(false);
 
-// --- VALIDACIONES EN TIEMPO REAL (COMPUTED) ---
-
-// 1. Error de Nombre/Apellido con números o puro espacio
-const errorNombre = computed(() => {
-  if (!form.value.nombre && !form.value.apellido) return "";
-  
-  if (form.value.nombre.length > 0 && form.value.nombre.trim() === "") {
-    return "El nombre no puede estar compuesto solo por espacios vacíos";
-  }
-  
-  if (form.value.apellido.length > 0 && form.value.apellido.trim() === "") {
-    return "El apellido no puede estar compuesto solo por espacios vacíos";
-  }
-
-  const tieneNumeros = /\d/;
-  if (tieneNumeros.test(form.value.nombre) || tieneNumeros.test(form.value.apellido)) {
-    return "Debes colocar un nombre/apellido sin números";
-  }
-  return "";
-});
-
-// 2. Error de DNI inválido
-const errorDni = computed(() => {
-  if (!form.value.dni) return "";
-  const dniValido = /^\d{7,9}$/;
-  if (!dniValido.test(form.value.dni)) {
-    return "El DNI debe ser solo números (entre 7 y 9 dígitos, sin puntos)";
-  }
-  return "";
-});
-
-// 3. Error de Email inválido
-const errorEmail = computed(() => {
-  if (!form.value.email) return "";
-  // La RegEx exige texto que no sea un arroba, seguido de un @, seguido de más texto
-  const emailRegex = /^[^@\s]+@[^@\s]+$/;
-  if (!emailRegex.test(form.value.email)) {
-    return "Debes colocar texto antes del @, incluir el @, y texto luego del @";
-  }
-  return "";
-});
-
-// 4. Error de Contraseña corta
-const errorPassword = computed(() => {
-  if (!form.value.password) return "";
-  if (form.value.password.length < 8) {
-    return "La contraseña debe tener al menos 8 caracteres";
-  }
-  return "";
-});
-
-// 5. Error de Edad menor a 18
-const errorFecha = computed(() => {
-  if (!form.value.fecha_nacimiento) return "";
-  const fnac = new Date(form.value.fecha_nacimiento);
-  const hoy = new Date();
-  let edad = hoy.getFullYear() - fnac.getFullYear();
-  const mes = hoy.getMonth() - fnac.getMonth();
-
-  if (mes < 0 || (mes === 0 && hoy.getDate() < fnac.getDate())) {
-    edad--;
-  }
-
-  if (edad < 18) {
-    return "Debes ser mayor de 18 años para registrarte";
-  }
-  return "";
-});
-
-// 6. VALIDACIÓN GLOBAL DEL FORMULARIO
-const isFormValido = computed(() => {
-  return (
-    form.value.nombre.trim() !== "" &&
-    form.value.apellido.trim() !== "" &&
-    form.value.dni.trim() !== "" &&
-    form.value.email.trim() !== "" &&
-    form.value.password.trim() !== "" &&
-    form.value.fecha_nacimiento !== "" &&
-    !errorNombre.value &&
-    !errorDni.value &&
-    !errorEmail.value &&
-    !errorPassword.value &&
-    !errorFecha.value
-  );
-});
-
-// Máximo calendario HTML
-const maxFechaNacimiento = computed(() => {
-  const hoy = new Date();
-  hoy.setFullYear(hoy.getFullYear() - 18);
-  return hoy.toISOString().split("T")[0];
-});
-
 async function handleRegister() {
+  if (!formRef.value?.isFormValido) return;
+
   loading.value = true;
-  error.value = "";
+  formRef.value.errorGlobal = "";
 
   try {
-    await auth.register(form.value);
+    await auth.register(formRef.value.form);
     paso.value = 2;
   } catch (e) {
-    error.value = e.response?.data?.error || "Error al registrarse";
+    formRef.value.errorGlobal = e.response?.data?.error || "Error al registrarse";
   } finally {
     loading.value = false;
   }
