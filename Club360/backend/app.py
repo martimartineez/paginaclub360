@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from sqlalchemy import inspect, text
 import os
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 from models import db
 from routes.auth import auth_bp

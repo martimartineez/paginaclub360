@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from email_service import enviar_aviso_cupo_liberado
 from models import db, Credito, ListaEspera
 
 
@@ -147,5 +148,6 @@ def cancelar_reserva_con_creditos(reserva):
     if lista:
         lista.estado = 'notificado'
         resultado['notificado_usuario_id'] = lista.usuario_id
+        resultado['mail_lista_espera_enviado'] = enviar_aviso_cupo_liberado(lista)
 
     return resultado
