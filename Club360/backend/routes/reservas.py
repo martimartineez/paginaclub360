@@ -1,16 +1,24 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, redirect
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Reserva, Clase, Usuario, ListaEspera, Suspension, Pago, Abono
 from datetime import datetime, date
-from creditos_logic import aplicar_creditos_a_reserva, cancelar_reserva_con_creditos
+from creditos_logic import aplicar_creditos_a_reserva, cancelar_reserva_con_creditos, notificar_siguiente_en_lista_espera
+from email_service import validar_token_rechazo_lista_espera
 from suspensiones_logic import (
     sincronizar_suspensiones_usuario,
     tiene_suspension_abonado_para_clase,
     tiene_suspension_no_abonado,
 )
+from itsdangerous import BadSignature, SignatureExpired
+import os
 import qrcode, io, base64
 
 reservas_bp = Blueprint('reservas', __name__)
+
+
+def redirect_rechazo_lista_espera(estado):
+    frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+    return redirect(f'{frontend_url}/lista-espera/rechazo?estado={estado}')
 
 
 def generar_qr(reserva_id):
@@ -106,6 +114,14 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
     if reserva.monto_pagado >= float(reserva.monto_total or 0) * 0.5:
         reserva.senia_pagada = True
 
+    entrada_lista = ListaEspera.query.filter(
+        ListaEspera.usuario_id == usuario_id,
+        ListaEspera.clase_id == clase_id,
+        ListaEspera.estado.in_(('esperando', 'notificado'))
+    ).first()
+    if entrada_lista:
+        entrada_lista.estado = 'aceptado'
+
     db.session.commit()
     return reserva, {
         'monto_a_pagar': monto_cobrar,
@@ -140,6 +156,53 @@ def crear_reserva_interna(data, actor_id):
 
     pago_info = extra if isinstance(extra, dict) else {'monto_a_pagar': extra, 'credito_usado': 0}
     return jsonify({'reserva': resultado.to_dict(), **pago_info}), 201
+
+
+@reservas_bp.route('/lista-espera/<int:lista_espera_id>/rechazar', methods=['GET'])
+def rechazar_cupo_lista_espera(lista_espera_id):
+    token = request.args.get('token')
+    if not token:
+        return redirect_rechazo_lista_espera('invalido')
+
+    try:
+        payload = validar_token_rechazo_lista_espera(token)
+    except SignatureExpired:
+        return redirect_rechazo_lista_espera('expirado')
+    except BadSignature:
+        return redirect_rechazo_lista_espera('invalido')
+
+    lista = ListaEspera.query.get_or_404(lista_espera_id)
+    if (
+        payload.get('lista_espera_id') != lista.id or
+        payload.get('usuario_id') != lista.usuario_id or
+        payload.get('clase_id') != lista.clase_id
+    ):
+        return redirect_rechazo_lista_espera('invalido')
+
+    if lista.estado == 'rechazado':
+        return redirect_rechazo_lista_espera('ya_rechazado')
+    if lista.estado != 'notificado':
+        return redirect_rechazo_lista_espera('no_pendiente')
+
+    reserva_activa = Reserva.query.filter_by(
+        usuario_id=lista.usuario_id,
+        clase_id=lista.clase_id,
+        estado='activa'
+    ).first()
+    if reserva_activa:
+        return redirect_rechazo_lista_espera('ya_reservado')
+
+    lista.estado = 'rechazado'
+
+    if lista.clase and lista.clase.cupos_disponibles() > 0:
+        notificar_siguiente_en_lista_espera(
+            lista.clase_id,
+            mes=lista.mes,
+            anio=lista.anio
+        )
+
+    db.session.commit()
+    return redirect_rechazo_lista_espera('ok')
 
 
 @reservas_bp.route('/mis-lista-espera', methods=['GET'])
@@ -349,6 +412,13 @@ def crear_abono():
         db.session.add(reserva)
         db.session.flush()
         reserva.qr_code = generar_qr(reserva.id)
+        entrada_lista = ListaEspera.query.filter(
+            ListaEspera.usuario_id == target_user_id,
+            ListaEspera.clase_id == clase_id,
+            ListaEspera.estado.in_(('esperando', 'notificado'))
+        ).first()
+        if entrada_lista:
+            entrada_lista.estado = 'aceptado'
         reservas_creadas.append(reserva)
 
     pago_diferido_permitido = puede_diferir_pago_abono()

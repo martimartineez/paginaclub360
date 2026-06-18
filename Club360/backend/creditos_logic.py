@@ -75,6 +75,26 @@ def aplicar_creditos_a_reserva(reserva, monto_objetivo):
     return monto_objetivo
 
 
+def notificar_siguiente_en_lista_espera(clase_id, mes=None, anio=None):
+    now = datetime.utcnow()
+    lista = ListaEspera.query.filter_by(
+        clase_id=clase_id,
+        estado='esperando',
+        mes=mes or now.month,
+        anio=anio or now.year
+    ).order_by(ListaEspera.fecha_inscripcion).first()
+
+    if not lista:
+        return None
+
+    lista.estado = 'notificado'
+    return {
+        'notificado_usuario_id': lista.usuario_id,
+        'lista_espera_id': lista.id,
+        'mail_lista_espera_enviado': enviar_aviso_cupo_liberado(lista)
+    }
+
+
 def cancelar_reserva_con_creditos(reserva):
     if reserva.estado != 'activa':
         raise ValueError('La reserva no esta activa')
@@ -139,15 +159,12 @@ def cancelar_reserva_con_creditos(reserva):
             resultado['sin_devolucion'] = True
             resultado['info'] = 'La reserva fue cancelada fuera del plazo de 24 horas. No se genero devolucion.'
 
-    lista = ListaEspera.query.filter_by(
-        clase_id=reserva.clase_id,
-        estado='esperando',
-        mes=datetime.utcnow().month,
-        anio=datetime.utcnow().year
-    ).order_by(ListaEspera.fecha_inscripcion).first()
-    if lista:
-        lista.estado = 'notificado'
-        resultado['notificado_usuario_id'] = lista.usuario_id
-        resultado['mail_lista_espera_enviado'] = enviar_aviso_cupo_liberado(lista)
+    notificacion = notificar_siguiente_en_lista_espera(
+        reserva.clase_id,
+        mes=reserva.clase.fecha.month,
+        anio=reserva.clase.fecha.year
+    )
+    if notificacion:
+        resultado.update(notificacion)
 
     return resultado

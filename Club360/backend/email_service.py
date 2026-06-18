@@ -2,6 +2,25 @@ import os
 import smtplib
 import ssl
 from email.message import EmailMessage
+from flask import current_app, url_for
+from itsdangerous import URLSafeTimedSerializer
+
+
+def generar_token_rechazo_lista_espera(lista_espera):
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    return serializer.dumps(
+        {
+            'lista_espera_id': lista_espera.id,
+            'usuario_id': lista_espera.usuario_id,
+            'clase_id': lista_espera.clase_id,
+        },
+        salt='rechazo-lista-espera'
+    )
+
+
+def validar_token_rechazo_lista_espera(token):
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    return serializer.loads(token, salt='rechazo-lista-espera', max_age=60 * 60 * 24 * 7)
 
 
 def _smtp_config():
@@ -75,6 +94,13 @@ def enviar_aviso_cupo_liberado(lista_espera):
     hora = clase.hora_inicio.strftime('%H:%M') if clase.hora_inicio else ''
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
     nombre = usuario.nombre or 'cliente'
+    token_rechazo = generar_token_rechazo_lista_espera(lista_espera)
+    link_rechazo = url_for(
+        'reservas.rechazar_cupo_lista_espera',
+        lista_espera_id=lista_espera.id,
+        token=token_rechazo,
+        _external=True
+    )
 
     asunto = f'Club360 - Se libero un cupo para {actividad}'
     cuerpo = (
@@ -82,6 +108,8 @@ def enviar_aviso_cupo_liberado(lista_espera):
         f'Se libero un cupo para {actividad} el {fecha} a las {hora} hs.\n'
         'Entra a Club360 para confirmar tu reserva antes de que el cupo sea tomado por otra persona.\n\n'
         f'{frontend_url}/clases\n\n'
+        'Si no queres tomar este cupo, rechazalo desde este link y se lo ofreceremos a la siguiente persona:\n'
+        f'{link_rechazo}\n\n'
         'Saludos,\n'
         'Club360'
     )

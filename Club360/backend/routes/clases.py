@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Clase, Actividad, Reserva, ListaEspera, Usuario
 from datetime import datetime, date
+from creditos_logic import notificar_siguiente_en_lista_espera
 from suspensiones_logic import sincronizar_suspensiones_usuario, tiene_suspension_abonado_para_clase
 import calendar
 
@@ -314,14 +315,25 @@ def create_clase():
 def update_clase(clase_id):
     clase = Clase.query.get_or_404(clase_id)
     data = request.get_json()
+    cupos_antes = clase.cupos_disponibles()
+    resultado = None
     if 'cupo_maximo' in data:
         nuevo_cupo = int(data['cupo_maximo'])
         inscriptos = Reserva.query.filter_by(clase_id=clase_id, estado='activa').count()
         if nuevo_cupo < inscriptos:
             return jsonify({'error': f'No podés bajar el cupo por debajo de los inscriptos actuales ({inscriptos})'}), 400
         clase.cupo_maximo = nuevo_cupo
+        if cupos_antes <= 0 and clase.cupos_disponibles() > 0:
+            resultado = notificar_siguiente_en_lista_espera(
+                clase.id,
+                mes=clase.fecha.month,
+                anio=clase.fecha.year
+            )
     db.session.commit()
-    return jsonify(clase.to_dict()), 200
+    response = clase.to_dict()
+    if resultado:
+        response.update(resultado)
+    return jsonify(response), 200
 
 
 @clases_bp.route('/<int:clase_id>/cancelar', methods=['POST'])
