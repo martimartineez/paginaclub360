@@ -18,6 +18,23 @@ def generar_token_rechazo_lista_espera(lista_espera):
     )
 
 
+def generar_token_reserva_lista_espera(lista_espera):
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    return serializer.dumps(
+        {
+            'lista_espera_id': lista_espera.id,
+            'usuario_id': lista_espera.usuario_id,
+            'clase_id': lista_espera.clase_id,
+        },
+        salt='reserva-lista-espera'
+    )
+
+
+def validar_token_reserva_lista_espera(token):
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    return serializer.loads(token, salt='reserva-lista-espera', max_age=60 * 60 * 24 * 7)
+
+
 def validar_token_rechazo_lista_espera(token):
     serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
     return serializer.loads(token, salt='rechazo-lista-espera', max_age=60 * 60 * 24 * 7)
@@ -95,6 +112,7 @@ def enviar_aviso_cupo_liberado(lista_espera):
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
     nombre = usuario.nombre or 'cliente'
     token_rechazo = generar_token_rechazo_lista_espera(lista_espera)
+    token_reserva = generar_token_reserva_lista_espera(lista_espera)
     link_rechazo = url_for(
         'reservas.rechazar_cupo_lista_espera',
         lista_espera_id=lista_espera.id,
@@ -107,7 +125,7 @@ def enviar_aviso_cupo_liberado(lista_espera):
         f'Hola {nombre},\n\n'
         f'Se libero un cupo para {actividad} el {fecha} a las {hora} hs.\n'
         'Entra a Club360 para confirmar tu reserva antes de que el cupo sea tomado por otra persona.\n\n'
-        f'{frontend_url}/clases\n\n'
+        f'{frontend_url}/clases?clase_id={clase.id}&lista_token={token_reserva}\n\n'
         'Si no queres tomar este cupo, rechazalo desde este link y se lo ofreceremos a la siguiente persona:\n'
         f'{link_rechazo}\n\n'
         'Saludos,\n'

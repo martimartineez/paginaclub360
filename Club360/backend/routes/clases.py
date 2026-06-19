@@ -8,6 +8,25 @@ import calendar
 
 clases_bp = Blueprint('clases', __name__)
 
+
+def cupos_disponibles_para_usuario(clase, usuario_id=None):
+    cupos = clase.cupos_disponibles()
+    if cupos <= 0 or not usuario_id or not clase.fecha:
+        return cupos
+
+    notificado = ListaEspera.query.filter_by(
+        clase_id=clase.id,
+        estado='notificado',
+        mes=clase.fecha.month,
+        anio=clase.fecha.year
+    ).order_by(ListaEspera.fecha_inscripcion).first()
+
+    if notificado and notificado.usuario_id != usuario_id:
+        return 0
+
+    return cupos
+
+
 def require_rol(*roles):
     from functools import wraps
     def decorator(fn):
@@ -25,6 +44,7 @@ def require_rol(*roles):
 @clases_bp.route('/', methods=['GET'])
 def get_clases():
     actividad_id = request.args.get('actividad_id', type=int)
+    usuario_id = request.args.get('usuario_id', type=int)
     desde = request.args.get('desde')
     hasta = request.args.get('hasta')
     solo_activas = request.args.get('solo_activas', 'true') == 'true'
@@ -47,6 +67,7 @@ def get_clases():
 def get_fechas_disponibles():
     """Fechas únicas con horarios para clase individual — máximo 1 mes desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
+    usuario_id = request.args.get('usuario_id', type=int)
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
@@ -76,7 +97,7 @@ def get_fechas_disponibles():
         fechas[f]['horarios'].append({
             'clase_id': c.id,
             'hora_inicio': c.hora_inicio.strftime('%H:%M'),
-            'cupos_disponibles': c.cupos_disponibles(),
+            'cupos_disponibles': cupos_disponibles_para_usuario(c, usuario_id),
             'cupo_maximo': c.cupo_maximo,
             'precio_clase': float(c.actividad.precio_clase)
         })
@@ -127,7 +148,7 @@ def get_horarios_disponibles():
         opciones[key]['clases_mes'].append({
             'clase_id': c.id,
             'fecha': c.fecha.isoformat(),
-            'cupos_disponibles': c.cupos_disponibles(),
+            'cupos_disponibles': cupos_disponibles_para_usuario(c, usuario_id),
             'cancelada': c.cancelada,
             'ya_inscripto': c.id in clases_ya_inscripto
         })
@@ -184,7 +205,7 @@ def get_detalle_abono():
 
     clases_disponibles = [
         c for c in clases_mes
-        if not c.cancelada and c.cupos_disponibles() > 0 and c.id not in clases_ya_inscripto and c.id not in clases_suspendidas
+        if not c.cancelada and cupos_disponibles_para_usuario(c, usuario_id) > 0 and c.id not in clases_ya_inscripto and c.id not in clases_suspendidas
     ]
     clases_ya_en = [c for c in clases_mes if c.id in clases_ya_inscripto]
     total_clases = len(clases_mes)
@@ -223,15 +244,16 @@ def get_detalle_abono():
     for c in clases_mes:
         ya_inscripto = c.id in clases_ya_inscripto
         suspendida = c.id in clases_suspendidas
-        disponible = not c.cancelada and c.cupos_disponibles() > 0 and not ya_inscripto and not suspendida
-        sin_cupo = not c.cancelada and c.cupos_disponibles() <= 0 and not ya_inscripto
+        cupos_usuario = cupos_disponibles_para_usuario(c, usuario_id)
+        disponible = not c.cancelada and cupos_usuario > 0 and not ya_inscripto and not suspendida
+        sin_cupo = not c.cancelada and cupos_usuario <= 0 and not ya_inscripto
         en_espera = sin_cupo and c.id in clases_en_espera_usuario
         detalle_clases.append({
             'clase_id': c.id,
             'fecha': c.fecha.isoformat(),
             'dia_semana': c.dia_semana_str(),
             'hora_inicio': c.hora_inicio.strftime('%H:%M'),
-            'cupos_disponibles': c.cupos_disponibles(),
+            'cupos_disponibles': cupos_usuario,
             'cancelada': c.cancelada,
             'ya_inscripto': ya_inscripto,
             'suspendida': suspendida,
@@ -260,7 +282,10 @@ def get_detalle_abono():
 @clases_bp.route('/<int:clase_id>', methods=['GET'])
 def get_clase(clase_id):
     clase = Clase.query.get_or_404(clase_id)
-    return jsonify(clase.to_dict()), 200
+    usuario_id = request.args.get('usuario_id', type=int)
+    data = clase.to_dict()
+    data['cupos_disponibles'] = cupos_disponibles_para_usuario(clase, usuario_id)
+    return jsonify(data), 200
 
 
 @clases_bp.route('/', methods=['POST'])

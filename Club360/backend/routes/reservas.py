@@ -39,6 +39,69 @@ def puede_diferir_pago_abono():
     return es_periodo_gracia()
 
 
+def validar_prioridad_lista_espera(clase, usuario_id):
+    if not clase or not clase.fecha:
+        return None
+
+    entrada_notificada = ListaEspera.query.filter_by(
+        clase_id=clase.id,
+        estado='notificado',
+        mes=clase.fecha.month,
+        anio=clase.fecha.year
+    ).order_by(ListaEspera.fecha_inscripcion).first()
+
+    if entrada_notificada:
+        if entrada_notificada.usuario_id != usuario_id:
+            return 'Este cupo esta reservado para la primera persona de la lista de espera.'
+        return None
+
+    primera_en_espera = ListaEspera.query.filter_by(
+        clase_id=clase.id,
+        estado='esperando',
+        mes=clase.fecha.month,
+        anio=clase.fecha.year
+    ).order_by(ListaEspera.fecha_inscripcion).first()
+
+    if primera_en_espera and primera_en_espera.usuario_id != usuario_id:
+        return 'Este cupo corresponde a una persona que esta antes en la lista de espera.'
+
+    return None
+
+
+def anotar_en_lista_espera(usuario_id, clase_id, tipo, mes=None, anio=None):
+    now = datetime.utcnow()
+    mes = mes or now.month
+    anio = anio or now.year
+
+    ya = ListaEspera.query.filter_by(
+        usuario_id=usuario_id,
+        clase_id=clase_id,
+        estado='esperando',
+        mes=mes,
+        anio=anio
+    ).first()
+
+    if ya:
+        return 'espera_ya', None, None
+
+    lista = ListaEspera(
+        usuario_id=usuario_id,
+        clase_id=clase_id,
+        tipo_preferencia=tipo,
+        mes=mes,
+        anio=anio
+    )
+    db.session.add(lista)
+    db.session.commit()
+    total_espera = ListaEspera.query.filter_by(
+        clase_id=clase_id,
+        estado='esperando',
+        mes=mes,
+        anio=anio
+    ).count()
+    return 'espera', lista.to_dict(), total_espera >= 10
+
+
 def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, monto_pagar=None, usar_credito=False):
     clase = Clase.query.get(clase_id)
     if not clase:
@@ -56,22 +119,11 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
         return None, 'Tenes una suspension activa para este turno. Debes pagarla antes de volver a abonarte.', None
 
     if clase.cupos_disponibles() <= 0:
-        ya = ListaEspera.query.filter_by(
-            usuario_id=usuario_id, clase_id=clase_id,
-            estado='esperando', mes=now.month, anio=now.year
-        ).first()
-        if not ya:
-            lista = ListaEspera(
-                usuario_id=usuario_id, clase_id=clase_id,
-                tipo_preferencia=tipo, mes=now.month, anio=now.year
-            )
-            db.session.add(lista)
-            db.session.commit()
-            total_espera = ListaEspera.query.filter_by(
-                clase_id=clase_id, estado='esperando', mes=now.month, anio=now.year
-            ).count()
-            return 'espera', lista.to_dict(), total_espera >= 10
-        return 'espera_ya', None, None
+        return anotar_en_lista_espera(usuario_id, clase_id, tipo, now.month, now.year)
+
+    error_prioridad = validar_prioridad_lista_espera(clase, usuario_id)
+    if error_prioridad:
+        return anotar_en_lista_espera(usuario_id, clase_id, tipo, clase.fecha.month, clase.fecha.year)
 
     existente = Reserva.query.filter_by(usuario_id=usuario_id, clase_id=clase_id, estado='activa').first()
     if existente:
@@ -384,6 +436,18 @@ def crear_abono():
         existente = Reserva.query.filter_by(usuario_id=target_user_id, clase_id=clase_id, estado='activa').first()
         if existente:
             clases_ya_inscripto.append(clase_id)
+            continue
+
+        error_prioridad = validar_prioridad_lista_espera(clase, target_user_id)
+        if clase.cupos_disponibles() > 0 and error_prioridad:
+            anotar_en_lista_espera(
+                target_user_id,
+                clase_id,
+                'abonado',
+                clase.fecha.month,
+                clase.fecha.year
+            )
+            clases_en_espera.append(clase_id)
             continue
 
         if clase.cupos_disponibles() <= 0:
