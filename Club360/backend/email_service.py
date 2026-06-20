@@ -109,14 +109,12 @@ def enviar_aviso_cupo_liberado(lista_espera):
     actividad = clase.actividad.nombre if clase.actividad else 'la clase'
     fecha = clase.fecha.strftime('%d/%m/%Y') if clase.fecha else ''
     hora = clase.hora_inicio.strftime('%H:%M') if clase.hora_inicio else ''
-    frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
     nombre = usuario.nombre or 'cliente'
-    token_rechazo = generar_token_rechazo_lista_espera(lista_espera)
     token_reserva = generar_token_reserva_lista_espera(lista_espera)
-    link_rechazo = url_for(
-        'reservas.rechazar_cupo_lista_espera',
+    link_aceptar = url_for(
+        'reservas.aceptar_cupo_lista_espera',
         lista_espera_id=lista_espera.id,
-        token=token_rechazo,
+        token=token_reserva,
         _external=True
     )
 
@@ -125,9 +123,8 @@ def enviar_aviso_cupo_liberado(lista_espera):
         f'Hola {nombre},\n\n'
         f'Se libero un cupo para {actividad} el {fecha} a las {hora} hs.\n'
         'Entra a Club360 para confirmar tu reserva antes de que el cupo sea tomado por otra persona.\n\n'
-        f'{frontend_url}/clases?clase_id={clase.id}&lista_token={token_reserva}\n\n'
-        'Si no queres tomar este cupo, rechazalo desde este link y se lo ofreceremos a la siguiente persona:\n'
-        f'{link_rechazo}\n\n'
+        f'{link_aceptar}\n\n'
+        'Una vez dentro vas a poder confirmar tu lugar o, si preferis, rechazarlo para que se lo ofrezcamos a la siguiente persona de la lista.\n\n'
         'Saludos,\n'
         'Club360'
     )

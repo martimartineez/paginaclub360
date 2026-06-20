@@ -9,6 +9,32 @@ import calendar
 clases_bp = Blueprint('clases', __name__)
 
 
+def usuario_id_actual():
+    """Toma el usuario real de la sesion (JWT) cuando existe. No confia en
+    que el frontend mande un usuario_id por query para verse a si mismo
+    como el notificado: un cliente logueado siempre usa su propio id.
+    Solo un empleado/administrador puede pedir explicitamente el contexto
+    de otro usuario (por ejemplo, para gestionar un abono desde el panel),
+    igual que ya permite el resto de la API."""
+    try:
+        identity = get_jwt_identity()
+    except Exception:
+        identity = None
+
+    if not identity:
+        return None
+
+    propio_id = int(identity)
+    target_id = request.args.get('usuario_id', type=int)
+
+    if target_id and target_id != propio_id:
+        actor = Usuario.query.get(propio_id)
+        if actor and actor.rol in ('empleado', 'administrador'):
+            return target_id
+
+    return propio_id
+
+
 def cupos_disponibles_para_usuario(clase, usuario_id=None):
     cupos = clase.cupos_disponibles()
     if cupos <= 0 or not usuario_id or not clase.fecha:
@@ -64,10 +90,11 @@ def get_clases():
 
 
 @clases_bp.route('/fechas-disponibles', methods=['GET'])
+@jwt_required(optional=True)
 def get_fechas_disponibles():
     """Fechas únicas con horarios para clase individual — máximo 1 mes desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
-    usuario_id = request.args.get('usuario_id', type=int)
+    usuario_id = usuario_id_actual()
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
@@ -106,10 +133,11 @@ def get_fechas_disponibles():
 
 
 @clases_bp.route('/horarios-disponibles', methods=['GET'])
+@jwt_required(optional=True)
 def get_horarios_disponibles():
     """Para abonos: combinaciones dia+hora del mes actual, solo desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
-    usuario_id = request.args.get('usuario_id', type=int)
+    usuario_id = usuario_id_actual()
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
@@ -157,12 +185,13 @@ def get_horarios_disponibles():
 
 
 @clases_bp.route('/detalle-abono', methods=['GET'])
+@jwt_required(optional=True)
 def get_detalle_abono():
     """Clases del mes actual para un abono — solo desde hoy en adelante"""
     actividad_id = request.args.get('actividad_id', type=int)
     dia_semana_num = request.args.get('dia_semana_num', type=int)
     hora_inicio = request.args.get('hora_inicio')
-    usuario_id = request.args.get('usuario_id', type=int)  # para verificar beneficio
+    usuario_id = usuario_id_actual()  # para verificar beneficio
 
     if actividad_id is None or dia_semana_num is None or not hora_inicio:
         return jsonify({'error': 'Parámetros requeridos: actividad_id, dia_semana_num, hora_inicio'}), 400
@@ -280,9 +309,10 @@ def get_detalle_abono():
 
 
 @clases_bp.route('/<int:clase_id>', methods=['GET'])
+@jwt_required(optional=True)
 def get_clase(clase_id):
     clase = Clase.query.get_or_404(clase_id)
-    usuario_id = request.args.get('usuario_id', type=int)
+    usuario_id = usuario_id_actual()
     data = clase.to_dict()
     data['cupos_disponibles'] = cupos_disponibles_para_usuario(clase, usuario_id)
     return jsonify(data), 200

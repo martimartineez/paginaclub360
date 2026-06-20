@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Reserva, Clase, Usuario, ListaEspera, Suspension, Pago, Abono
 from datetime import datetime, date
 from creditos_logic import aplicar_creditos_a_reserva, cancelar_reserva_con_creditos, notificar_siguiente_en_lista_espera
-from email_service import validar_token_rechazo_lista_espera
+from email_service import validar_token_rechazo_lista_espera, validar_token_reserva_lista_espera
 from suspensiones_logic import (
     sincronizar_suspensiones_usuario,
     tiene_suspension_abonado_para_clase,
@@ -18,6 +18,20 @@ reservas_bp = Blueprint('reservas', __name__)
 
 def redirect_rechazo_lista_espera(estado):
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+    return redirect(f'{frontend_url}/lista-espera/rechazo?estado={estado}')
+
+
+def redirect_aceptacion_lista_espera(estado, clase_id=None, lista_espera_id=None, token=None):
+    frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+
+    if estado == 'ok' and clase_id and lista_espera_id and token:
+        # Token valido: lo reenviamos al detalle de la clase para que el frontend
+        # pueda verificarlo contra el backend y mostrar el panel de "aceptar cupo".
+        return redirect(
+            f'{frontend_url}/clases/{clase_id}'
+            f'?lista_espera_id={lista_espera_id}&lista_token={token}'
+        )
+
     return redirect(f'{frontend_url}/lista-espera/rechazo?estado={estado}')
 
 
@@ -208,6 +222,143 @@ def crear_reserva_interna(data, actor_id):
 
     pago_info = extra if isinstance(extra, dict) else {'monto_a_pagar': extra, 'credito_usado': 0}
     return jsonify({'reserva': resultado.to_dict(), **pago_info}), 201
+
+
+@reservas_bp.route('/lista-espera/<int:lista_espera_id>/aceptar', methods=['GET'])
+def aceptar_cupo_lista_espera(lista_espera_id):
+    """Punto de entrada del link de email para aceptar un cupo liberado.
+
+    Valida la firma del token (igual que el rechazo) y, si todo esta en orden,
+    redirige al frontend con el token ya verificado para que el usuario pueda
+    confirmar y pagar. No crea la reserva aca: eso requiere sesion iniciada y
+    se hace en /reservas/ con la verificacion de prioridad existente, que ya
+    impide que cualquier otro usuario distinto al notificado tome el cupo.
+    """
+    token = request.args.get('token')
+    if not token:
+        return redirect_aceptacion_lista_espera('invalido')
+
+    try:
+        payload = validar_token_reserva_lista_espera(token)
+    except SignatureExpired:
+        return redirect_aceptacion_lista_espera('expirado')
+    except BadSignature:
+        return redirect_aceptacion_lista_espera('invalido')
+
+    lista = db.session.get(ListaEspera, lista_espera_id)
+    if not lista:
+        return redirect_aceptacion_lista_espera('invalido')
+    if (
+        payload.get('lista_espera_id') != lista.id or
+        payload.get('usuario_id') != lista.usuario_id or
+        payload.get('clase_id') != lista.clase_id
+    ):
+        return redirect_aceptacion_lista_espera('invalido')
+
+    if lista.estado == 'rechazado':
+        return redirect_aceptacion_lista_espera('ya_rechazado')
+    if lista.estado == 'aceptado':
+        return redirect_aceptacion_lista_espera('ya_reservado')
+    if lista.estado != 'notificado':
+        return redirect_aceptacion_lista_espera('no_pendiente')
+
+    return redirect_aceptacion_lista_espera(
+        'ok',
+        clase_id=lista.clase_id,
+        lista_espera_id=lista.id,
+        token=token
+    )
+
+
+@reservas_bp.route('/lista-espera/<int:lista_espera_id>/verificar', methods=['GET'])
+@jwt_required()
+def verificar_cupo_lista_espera(lista_espera_id):
+    """Usado por el frontend (con sesion iniciada) para confirmar que el
+    usuario actual es realmente el destinatario del token antes de mostrarle
+    el panel de 'tenes un cupo reservado'. No depende solo del token: tambien
+    exige que el usuario logueado coincida, asi nadie puede reutilizar un
+    link ajeno con su propia sesion.
+    """
+    token = request.args.get('token')
+    user_id = int(get_jwt_identity())
+
+    if not token:
+        return jsonify({'valido': False, 'motivo': 'invalido'}), 200
+
+    try:
+        payload = validar_token_reserva_lista_espera(token)
+    except SignatureExpired:
+        return jsonify({'valido': False, 'motivo': 'expirado'}), 200
+    except BadSignature:
+        return jsonify({'valido': False, 'motivo': 'invalido'}), 200
+
+    lista = db.session.get(ListaEspera, lista_espera_id)
+    if not lista:
+        return jsonify({'valido': False, 'motivo': 'invalido'}), 200
+
+    if (
+        payload.get('lista_espera_id') != lista.id or
+        payload.get('usuario_id') != lista.usuario_id or
+        payload.get('clase_id') != lista.clase_id
+    ):
+        return jsonify({'valido': False, 'motivo': 'invalido'}), 200
+
+    if lista.usuario_id != user_id:
+        # El link es valido pero pertenece a otro usuario: no se le muestra nada.
+        return jsonify({'valido': False, 'motivo': 'otro_usuario'}), 200
+
+    if lista.estado == 'rechazado':
+        return jsonify({'valido': False, 'motivo': 'ya_rechazado'}), 200
+    if lista.estado == 'aceptado':
+        return jsonify({'valido': False, 'motivo': 'ya_reservado'}), 200
+    if lista.estado != 'notificado':
+        return jsonify({'valido': False, 'motivo': 'no_pendiente'}), 200
+
+    return jsonify({
+        'valido': True,
+        'lista_espera_id': lista.id,
+        'clase_id': lista.clase_id,
+        'tipo_preferencia': lista.tipo_preferencia
+    }), 200
+
+
+@reservas_bp.route('/lista-espera/<int:lista_espera_id>/rechazar-app', methods=['POST'])
+@jwt_required()
+def rechazar_cupo_lista_espera_app(lista_espera_id):
+    """Version pensada para usarse desde la app ya logueada (por ejemplo,
+    el boton 'Rechazar cupo' del panel que aparece al entrar con el link del
+    mail). Valida por sesion en vez de por token de email."""
+    user_id = int(get_jwt_identity())
+    lista = db.session.get(ListaEspera, lista_espera_id)
+    if not lista:
+        return jsonify({'error': 'No encontrado'}), 404
+    if lista.usuario_id != user_id:
+        return jsonify({'error': 'Sin permisos'}), 403
+
+    if lista.estado == 'rechazado':
+        return jsonify({'mensaje': 'Ya habias rechazado este cupo'}), 200
+    if lista.estado != 'notificado':
+        return jsonify({'error': 'Esta invitacion ya no esta pendiente'}), 400
+
+    reserva_activa = Reserva.query.filter_by(
+        usuario_id=lista.usuario_id,
+        clase_id=lista.clase_id,
+        estado='activa'
+    ).first()
+    if reserva_activa:
+        return jsonify({'error': 'Ya tenes una reserva activa para esta clase'}), 400
+
+    lista.estado = 'rechazado'
+
+    if lista.clase and lista.clase.cupos_disponibles() > 0:
+        notificar_siguiente_en_lista_espera(
+            lista.clase_id,
+            mes=lista.mes,
+            anio=lista.anio
+        )
+
+    db.session.commit()
+    return jsonify({'mensaje': 'Cupo rechazado. Se lo ofrecimos a la siguiente persona en la lista.'}), 200
 
 
 @reservas_bp.route('/lista-espera/<int:lista_espera_id>/rechazar', methods=['GET'])
@@ -608,7 +759,13 @@ def crear_reserva():
     clase_id = int(data.get('clase_id'))
     tipo = data.get('tipo', 'no_abonado')
     monto_pagar = data.get('monto_pagar', 'senia')
-    metodo_pago = data.get('metodo_pago', 'tarjeta_credito')
+    # Importante: el default es None (sin cobro). Solo se registra un pago
+    # si el frontend manda metodo_pago explicitamente, es decir, si el
+    # usuario realmente paso por una pantalla de pago/tarjeta. Asumir
+    # 'tarjeta_credito' por default generaba cobros fantasma (seña marcada
+    # como pagada) en flujos que solo confirman la reserva, como aceptar
+    # un cupo de lista de espera.
+    metodo_pago = data.get('metodo_pago')
     usar_credito = data.get('usar_credito', False)
 
     resultado, extra, alerta = crear_reserva_unica(
