@@ -235,6 +235,12 @@ class ListaEspera(db.Model):
     estado = db.Column(db.Enum('esperando', 'notificado', 'aceptado', 'rechazado', name='estado_espera_enum'), default='esperando')
     mes = db.Column(db.Integer, nullable=False)
     anio = db.Column(db.Integer, nullable=False)
+    # Tipo de reserva que origino la notificacion actual ('abonado' o 'no_abonado').
+    # Se usa para saber, si esta persona rechaza, con que criterio seguir
+    # la cadena (lista de abonados, no_abonados o la general combinada).
+    # String simple (no Enum) para que el ALTER TABLE de compatibilidad
+    # funcione igual en sqlite y en postgres.
+    origen_cancelacion = db.Column(db.String(20), nullable=True)
 
     def to_dict(self):
         return {
@@ -247,7 +253,8 @@ class ListaEspera(db.Model):
             'fecha_inscripcion': self.fecha_inscripcion.isoformat() if self.fecha_inscripcion else None,
             'estado': self.estado,
             'mes': self.mes,
-            'anio': self.anio
+            'anio': self.anio,
+            'origen_cancelacion': self.origen_cancelacion
         }
 
 

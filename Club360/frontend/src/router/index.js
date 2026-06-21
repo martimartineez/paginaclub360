@@ -29,7 +29,10 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const auth = useAuthStore()
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    return next('/login')
+    return next({ path: '/login', query: { redirect: to.fullPath } })
+  }
+  if (to.path.startsWith('/clases/') && to.query.lista_token && !auth.isAuthenticated) {
+    return next({ path: '/login', query: { redirect: to.fullPath } })
   }
   if (to.meta.roles && !to.meta.roles.includes(auth.user?.rol)) {
     return next('/')

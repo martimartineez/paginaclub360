@@ -133,7 +133,7 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
         return None, 'Tenes una suspension activa para este turno. Debes pagarla antes de volver a abonarte.', None
 
     if clase.cupos_disponibles() <= 0:
-        return anotar_en_lista_espera(usuario_id, clase_id, tipo, now.month, now.year)
+        return anotar_en_lista_espera(usuario_id, clase_id, tipo, clase.fecha.month, clase.fecha.year)
 
     error_prioridad = validar_prioridad_lista_espera(clase, usuario_id)
     if error_prioridad:
@@ -350,12 +350,19 @@ def rechazar_cupo_lista_espera_app(lista_espera_id):
 
     lista.estado = 'rechazado'
 
-    if lista.clase and lista.clase.cupos_disponibles() > 0:
-        notificar_siguiente_en_lista_espera(
-            lista.clase_id,
-            mes=lista.mes,
-            anio=lista.anio
-        )
+    print(
+        f'[lista_espera] rechazo (app): lista_espera_id={lista.id} '
+        f'usuario_id={lista.usuario_id} clase_id={lista.clase_id} '
+        f'origen_cancelacion={lista.origen_cancelacion!r}',
+        flush=True
+    )
+
+    notificar_siguiente_en_lista_espera(
+        lista.clase_id,
+        mes=lista.mes,
+        anio=lista.anio,
+        tipo_origen=lista.origen_cancelacion
+    )
 
     db.session.commit()
     return jsonify({'mensaje': 'Cupo rechazado. Se lo ofrecimos a la siguiente persona en la lista.'}), 200
@@ -399,12 +406,19 @@ def rechazar_cupo_lista_espera(lista_espera_id):
 
     lista.estado = 'rechazado'
 
-    if lista.clase and lista.clase.cupos_disponibles() > 0:
-        notificar_siguiente_en_lista_espera(
-            lista.clase_id,
-            mes=lista.mes,
-            anio=lista.anio
-        )
+    print(
+        f'[lista_espera] rechazo (email): lista_espera_id={lista.id} '
+        f'usuario_id={lista.usuario_id} clase_id={lista.clase_id} '
+        f'origen_cancelacion={lista.origen_cancelacion!r}',
+        flush=True
+    )
+
+    notificar_siguiente_en_lista_espera(
+        lista.clase_id,
+        mes=lista.mes,
+        anio=lista.anio,
+        tipo_origen=lista.origen_cancelacion
+    )
 
     db.session.commit()
     return redirect_rechazo_lista_espera('ok')
@@ -602,15 +616,14 @@ def crear_abono():
             continue
 
         if clase.cupos_disponibles() <= 0:
-            now = datetime.utcnow()
             ya = ListaEspera.query.filter_by(
                 usuario_id=target_user_id, clase_id=clase_id,
-                estado='esperando', mes=now.month, anio=now.year
+                estado='esperando', mes=clase.fecha.month, anio=clase.fecha.year
             ).first()
             if not ya:
                 lista = ListaEspera(
                     usuario_id=target_user_id, clase_id=clase_id,
-                    tipo_preferencia='abonado', mes=now.month, anio=now.year
+                    tipo_preferencia='abonado', mes=clase.fecha.month, anio=clase.fecha.year
                 )
                 db.session.add(lista)
             clases_en_espera.append(clase_id)
@@ -813,35 +826,6 @@ def cancelar_reserva(reserva_id):
     db.session.commit()
     return jsonify(resultado), 200
 
-    if reserva.estado != 'activa':
-        return jsonify({'error': 'La reserva no está activa'}), 400
-
-    reserva.estado = 'cancelada'
-    now = datetime.utcnow()
-    resultado = {'mensaje': 'Reserva cancelada'}
-
-    if reserva.tipo == 'abonado':
-        cancelaciones_previas = reserva.cancelaciones_mes or 0
-        reserva.cancelaciones_mes = cancelaciones_previas + 1
-        if reserva.cancelaciones_mes == 3:
-            resultado['perdida_beneficio'] = True
-            resultado['advertencia'] = '⚠️ Esta es tu tercera cancelación. Perdiste el beneficio del 20% de descuento por abonarte a mitad de mes.'
-        elif reserva.cancelaciones_mes == 2:
-            resultado['advertencia'] = '⚠️ Es tu segunda cancelación. Si cancelás una vez más perderás el beneficio del 20% de descuento al abonar a mitad de mes.'
-        resultado['info'] = 'Si cancelaste con 48hs de anticipación tenés crédito para el mes siguiente'
-    else:
-        resultado['info'] = 'Si cancelaste con 24hs de anticipación recuperás la seña'
-
-    lista = ListaEspera.query.filter_by(
-        clase_id=reserva.clase_id, estado='esperando', mes=now.month, anio=now.year
-    ).order_by(ListaEspera.fecha_inscripcion).first()
-    if lista:
-        lista.estado = 'notificado'
-        resultado['notificado_usuario_id'] = lista.usuario_id
-
-    db.session.commit()
-    return jsonify(resultado), 200
-
 
 @reservas_bp.route('/cliente/<int:uid>/cancelar/<int:reserva_id>', methods=['POST'])
 @jwt_required()
@@ -859,31 +843,6 @@ def cancelar_reserva_cliente(uid, reserva_id):
         resultado['mensaje'] = 'Reserva cancelada por empleado/administrador'
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
-    db.session.commit()
-    return jsonify(resultado), 200
-    if reserva.estado != 'activa':
-        return jsonify({'error': 'La reserva no está activa'}), 400
-
-    reserva.estado = 'cancelada'
-    now = datetime.utcnow()
-    resultado = {'mensaje': 'Reserva cancelada por empleado/administrador'}
-
-    if reserva.tipo == 'abonado':
-        cancelaciones_previas = reserva.cancelaciones_mes or 0
-        reserva.cancelaciones_mes = cancelaciones_previas + 1
-        if reserva.cancelaciones_mes == 3:
-            resultado['perdida_beneficio'] = True
-            resultado['advertencia'] = 'El cliente acumula 3 cancelaciones. Perdió el beneficio del 20%.'
-        elif reserva.cancelaciones_mes == 2:
-            resultado['advertencia'] = 'El cliente lleva 2 cancelaciones. Una más y pierde el beneficio del 20%.'
-
-    lista = ListaEspera.query.filter_by(
-        clase_id=reserva.clase_id, estado='esperando', mes=now.month, anio=now.year
-    ).order_by(ListaEspera.fecha_inscripcion).first()
-    if lista:
-        lista.estado = 'notificado'
-        resultado['notificado_usuario_id'] = lista.usuario_id
-
     db.session.commit()
     return jsonify(resultado), 200
 

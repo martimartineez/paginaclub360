@@ -81,13 +81,14 @@
 
 <script setup>
 import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth.js";
 
 import logo from "../assets/logo.png";
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 const form = ref({ email: "", password: "" });
 const error = ref("");
 const loading = ref(false);
@@ -98,7 +99,7 @@ async function handleLogin() {
 
   try {
     await auth.login(form.value.email, form.value.password);
-    router.push("/");
+    router.push(route.query.redirect || "/");
   } catch (e) {
     error.value = e.response?.data?.error || "Error al iniciar sesión";
   } finally {

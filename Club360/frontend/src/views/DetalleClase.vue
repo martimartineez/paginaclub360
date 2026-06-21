@@ -28,6 +28,99 @@
       Esta clase fue cancelada por el administrador.
     </div>
 
+    <div class="card cupo-reservado-card" style="margin-bottom:24px" v-if="cupoReservadoParaMi && !miReserva">
+      <h3 style="font-size:20px;margin-bottom:8px">🎉 ¡Tenés un cupo reservado!</h3>
+      <p style="font-size:14px;color:var(--text-muted);margin-bottom:16px">
+        Sos el primero de la lista de espera para esta clase. Confirmá ahora para asegurar tu lugar antes de que se le ofrezca a la siguiente persona.
+      </p>
+
+      <!-- Paso 1: elegir cuanto pagar -->
+      <div v-if="!confirmandoPagoCupo">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">¿Cuánto querés pagar?</p>
+        <div class="pago-opciones" style="margin-bottom:16px">
+          <div class="pago-opcion" :class="{ selected: montoPagoCupo === 'senia' }" @click="montoPagoCupo = 'senia'">
+            <div class="pago-radio">{{ montoPagoCupo === 'senia' ? '●' : '○' }}</div>
+            <div>
+              <p style="font-weight:600">Seña (50%) — ${{ Math.round((clase.precio_clase || 0) * 0.5).toLocaleString() }}</p>
+              <p style="font-size:12px;color:var(--text-muted)">El resto lo abonás al llegar a la clase</p>
+            </div>
+          </div>
+          <div class="pago-opcion" :class="{ selected: montoPagoCupo === 'total' }" @click="montoPagoCupo = 'total'">
+            <div class="pago-radio">{{ montoPagoCupo === 'total' ? '●' : '○' }}</div>
+            <div>
+              <p style="font-weight:600">Total — ${{ clase.precio_clase?.toLocaleString() }}</p>
+              <p style="font-size:12px;color:var(--text-muted)">Pagás todo ahora, no debés nada al llegar</p>
+            </div>
+          </div>
+          <div
+            v-if="creditoDisponibleCupo > 0"
+            class="pago-opcion"
+            :class="{ selected: montoPagoCupo === 'credito' }"
+            @click="montoPagoCupo = 'credito'"
+          >
+            <div class="pago-radio">{{ montoPagoCupo === 'credito' ? '●' : '○' }}</div>
+            <div>
+              <p style="font-weight:600">Pagar con crédito</p>
+              <p style="font-size:12px;color:var(--text-muted)">
+                Tenés {{ creditoDisponibleCupo }} crédito(s) para esta actividad. Se consume 1 crédito completo.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" @click="irAPagarCupo" :disabled="reservandoLoading">
+            Continuar →
+          </button>
+          <button class="btn btn-outline" @click="rechazarCupoLista" :disabled="reservandoLoading">
+            Rechazar cupo
+          </button>
+        </div>
+      </div>
+
+      <!-- Paso 2: tarjeta y confirmacion -->
+      <div v-else>
+        <button class="back-btn" @click="confirmandoPagoCupo = false" style="margin-bottom:12px">← Cambiar monto</button>
+
+        <div v-if="creditoCupoCubreTotal" style="max-width:440px">
+          <div class="alert alert-success" style="margin-bottom:16px">
+            El crédito cubre el monto seleccionado. Confirmá la reserva sin cargar tarjeta.
+          </div>
+          <button class="btn btn-primary" style="width:100%" @click="aceptarCupoLista" :disabled="reservandoLoading">
+            {{ reservandoLoading ? 'Procesando...' : 'Confirmar reserva' }}
+          </button>
+        </div>
+        <div v-else-if="loadingTarjetasCupo" class="loading-text">Cargando tarjetas...</div>
+        <div v-else-if="tarjetasCupo.length === 0" style="max-width:440px">
+          <div class="alert alert-warning">No tenés ninguna tarjeta registrada. Agregá una para continuar.</div>
+          <FormTarjeta label-boton="Guardar tarjeta" :show-cancelar="false" @guardada="onTarjetaGuardadaCupo" />
+        </div>
+        <div v-else style="max-width:440px">
+          <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px">Seleccioná una tarjeta:</p>
+          <div v-for="t in tarjetasCupo" :key="t.id" class="tarjeta-opcion"
+            :class="{ selected: tarjetaSeleccionadaCupo?.id === t.id }"
+            @click="tarjetaSeleccionadaCupo = t">
+            <div class="tarjeta-icon">💳</div>
+            <div>
+              <p style="font-weight:600">•••• •••• •••• {{ t.ultimos_4 }}</p>
+              <p style="font-size:12px;color:var(--text-muted)">{{ t.titular }} · Vence {{ t.vencimiento }}</p>
+            </div>
+            <div class="tarjeta-check" v-if="tarjetaSeleccionadaCupo?.id === t.id">✓</div>
+          </div>
+          <button v-if="!mostrarNuevaTarjetaCupo" class="btn btn-outline btn-sm" style="margin-top:10px" @click="mostrarNuevaTarjetaCupo = true">+ Usar otra tarjeta</button>
+          <div v-else style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+            <FormTarjeta label-boton="Guardar tarjeta" @guardada="onTarjetaGuardadaCupo" @cancelar="mostrarNuevaTarjetaCupo = false" />
+          </div>
+          <button class="btn btn-primary" style="width:100%;margin-top:20px"
+            @click="aceptarCupoLista" :disabled="!tarjetaSeleccionadaCupo || reservandoLoading">
+            {{ reservandoLoading ? 'Procesando...' : `Pagar $${montoCupoAPagar?.toLocaleString()}` }}
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="alert alert-warning" v-else-if="cupoTokenInvalido">
+      {{ cupoTokenInvalidoMensaje }}
+    </div>
+
     <div class="grid-3" style="margin-bottom:24px">
       <div class="card stat-card">
         <span class="stat-num">{{ clase.cupos_disponibles }}</span>
@@ -77,7 +170,7 @@
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && !miReserva && !clase.cancelada">
+    <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && !miReserva && !clase.cancelada && !cupoReservadoParaMi">
       <h3 style="font-size:20px;margin-bottom:12px">Reservar esta clase</h3>
 
       <!-- Sin cupo: panel de lista de espera -->
@@ -145,25 +238,77 @@
     </div>
 
     <div class="card" v-if="auth.isAdmin">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <h3 style="font-size:20px">⏳ Lista de espera</h3>
         <span v-if="listaEspera.length >= 10" class="badge badge-red">⚠️ Alta demanda</span>
       </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+        Si cancela un abonado, se avisa primero a la lista de abonados (y si está vacía, a la de no abonados).
+        Si cancela un no abonado, se avisa a la lista general (todos combinados por orden de inscripción).
+      </p>
       <div v-if="loadingEspera" style="color:var(--text-muted);font-size:14px">Cargando...</div>
       <div v-else-if="listaEspera.length === 0" style="color:var(--text-muted);font-size:14px">Lista vacía.</div>
-      <table v-else>
-        <thead>
-          <tr><th>Cliente</th><th>Preferencia</th><th>Fecha inscripción</th><th>Estado</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="(l, i) in listaEspera" :key="l.id">
-            <td>{{ l.usuario?.nombre }} {{ l.usuario?.apellido }}</td>
-            <td><span class="badge" :class="l.tipo_preferencia === 'abonado' ? 'badge-green' : 'badge-blue'">{{ l.tipo_preferencia }}</span></td>
-            <td style="font-size:12px;color:var(--text-muted)">{{ new Date(l.fecha_inscripcion).toLocaleDateString() }}</td>
-            <td><span class="badge badge-yellow">{{ l.estado }}</span></td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-else style="display:flex;flex-direction:column;gap:24px">
+        <div>
+          <h4 style="font-size:14px;color:var(--text-muted);margin-bottom:8px">
+            Lista de abonados ({{ listaEsperaAbonados.length }})
+          </h4>
+          <div v-if="listaEsperaAbonados.length === 0" style="font-size:13px;color:var(--text-muted)">Vacía.</div>
+          <table v-else>
+            <thead>
+              <tr><th>#</th><th>Cliente</th><th>Fecha inscripción</th><th>Estado</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(l, i) in listaEsperaAbonados" :key="l.id">
+                <td>{{ i + 1 }}</td>
+                <td>{{ l.usuario?.nombre }} {{ l.usuario?.apellido }}</td>
+                <td style="font-size:12px;color:var(--text-muted)">{{ new Date(l.fecha_inscripcion).toLocaleDateString() }}</td>
+                <td><span class="badge badge-yellow">{{ l.estado }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h4 style="font-size:14px;color:var(--text-muted);margin-bottom:8px">
+            Lista de no abonados ({{ listaEsperaNoAbonados.length }})
+          </h4>
+          <div v-if="listaEsperaNoAbonados.length === 0" style="font-size:13px;color:var(--text-muted)">Vacía.</div>
+          <table v-else>
+            <thead>
+              <tr><th>#</th><th>Cliente</th><th>Fecha inscripción</th><th>Estado</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(l, i) in listaEsperaNoAbonados" :key="l.id">
+                <td>{{ i + 1 }}</td>
+                <td>{{ l.usuario?.nombre }} {{ l.usuario?.apellido }}</td>
+                <td style="font-size:12px;color:var(--text-muted)">{{ new Date(l.fecha_inscripcion).toLocaleDateString() }}</td>
+                <td><span class="badge badge-yellow">{{ l.estado }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h4 style="font-size:14px;color:var(--text-muted);margin-bottom:8px">
+            Lista general — abonados y no abonados combinados ({{ listaEspera.length }})
+          </h4>
+          <table>
+            <thead>
+              <tr><th>#</th><th>Cliente</th><th>Preferencia</th><th>Fecha inscripción</th><th>Estado</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(l, i) in listaEspera" :key="l.id">
+                <td>{{ i + 1 }}</td>
+                <td>{{ l.usuario?.nombre }} {{ l.usuario?.apellido }}</td>
+                <td><span class="badge" :class="l.tipo_preferencia === 'abonado' ? 'badge-green' : 'badge-blue'">{{ l.tipo_preferencia }}</span></td>
+                <td style="font-size:12px;color:var(--text-muted)">{{ new Date(l.fecha_inscripcion).toLocaleDateString() }}</td>
+                <td><span class="badge badge-yellow">{{ l.estado }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <div class="modal-overlay" v-if="modalEditarCupo" @click.self="modalEditarCupo = false">
@@ -244,6 +389,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import api from '../api.js'
+import FormTarjeta from '../components/FormTarjeta.vue'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -267,6 +413,18 @@ const nuevoCupo = ref(10)
 const guardandoCupo = ref(false)
 const confirmarCancelarReserva = ref(false)
 const cancelandoReserva = ref(false)
+const cupoReservadoParaMi = ref(false)
+const cupoTokenInvalido = ref(false)
+const cupoTokenInvalidoMensaje = ref('')
+const listaEsperaIdToken = ref(null)
+const tipoPreferenciaLista = ref(null)
+const confirmandoPagoCupo = ref(false)
+const montoPagoCupo = ref('senia')
+const tarjetasCupo = ref([])
+const loadingTarjetasCupo = ref(false)
+const tarjetaSeleccionadaCupo = ref(null)
+const mostrarNuevaTarjetaCupo = ref(false)
+const creditosCupo = ref([])
 
 // --- VALIDACIONES COMPUTED PARA EL CUPO ---
 
@@ -289,6 +447,26 @@ const errorCupo = computed(() => {
 const isCupoValido = computed(() => {
   return errorCupo.value === ''
 })
+
+const creditoDisponibleCupo = computed(() => {
+  if (!clase.value) return 0
+  if (tipoPreferenciaLista.value !== 'no_abonado') return 0
+  return creditosCupo.value.filter(c => c.actividad_id === clase.value.actividad_id && c.estado === 'disponible').length
+})
+
+const montoCupoAPagar = computed(() => {
+  if (!clase.value) return 0
+  if (montoPagoCupo.value === 'credito') return 0
+  const precio = clase.value.precio_clase || 0
+  return montoPagoCupo.value === 'total' ? precio : Math.round(precio * 0.5)
+})
+
+const creditoCupoCubreTotal = computed(() => {
+  return montoPagoCupo.value === 'credito' && creditoDisponibleCupo.value > 0
+})
+
+const listaEsperaAbonados = computed(() => listaEspera.value.filter(l => l.tipo_preferencia === 'abonado'))
+const listaEsperaNoAbonados = computed(() => listaEspera.value.filter(l => l.tipo_preferencia === 'no_abonado'))
 
 // --- FUNCIONES ---
 
@@ -371,7 +549,7 @@ async function reservar(tipo) {
     } else {
       mensaje.value = data.credito_usado > 0
         ? `Reserva creada exitosamente. Se aplico credito por $${data.credito_usado.toLocaleString()}.`
-        : 'Reserva creada exitosamente'
+        : 'Reserva creada exitosamente. Podés pagar la seña desde "Mis pagos".'
       miReserva.value = data.reserva
     }
     reservando.value = false
@@ -431,9 +609,137 @@ async function cancelarReserva() {
   }
 }
 
+async function verificarTokenLista() {
+  const listaEsperaId = route.query.lista_espera_id
+  const token = route.query.lista_token
+  if (!listaEsperaId || !token || !auth.isCliente) return
+
+  listaEsperaIdToken.value = listaEsperaId
+  try {
+    const { data } = await api.get(`/reservas/lista-espera/${listaEsperaId}/verificar`, {
+      params: { token }
+    })
+    if (data.valido) {
+      cupoReservadoParaMi.value = true
+      cupoTokenInvalido.value = false
+      tipoPreferenciaLista.value = data.tipo_preferencia
+      montoPagoCupo.value = 'senia'
+      confirmandoPagoCupo.value = false
+      await fetchCreditosCupo()
+    } else {
+      cupoReservadoParaMi.value = false
+      cupoTokenInvalido.value = true
+      cupoTokenInvalidoMensaje.value = mensajeTokenInvalido(data.motivo)
+    }
+  } catch {
+    cupoReservadoParaMi.value = false
+    cupoTokenInvalido.value = true
+    cupoTokenInvalidoMensaje.value = 'No pudimos verificar tu invitación. Probá entrar de nuevo desde el link del email.'
+  }
+}
+
+function mensajeTokenInvalido(motivo) {
+  const mensajes = {
+    otro_usuario: 'Este link es para otra cuenta. Iniciá sesión con la cuenta a la que le llegó el aviso.',
+    ya_reservado: 'Ya confirmaste este cupo anteriormente.',
+    ya_rechazado: 'Ya rechazaste este cupo. Se le ofreció a la siguiente persona en la lista.',
+    no_pendiente: 'Esta invitación ya no está disponible.',
+    expirado: 'El link de invitación venció.',
+    invalido: 'No pudimos verificar este link de invitación.'
+  }
+  return mensajes[motivo] || mensajes.invalido
+}
+
+async function fetchTarjetasCupo() {
+  loadingTarjetasCupo.value = true
+  try {
+    const { data } = await api.get('/auth/tarjetas')
+    tarjetasCupo.value = data
+    if (data.length > 0) tarjetaSeleccionadaCupo.value = data[0]
+  } catch {
+    tarjetasCupo.value = []
+  } finally {
+    loadingTarjetasCupo.value = false
+  }
+}
+
+async function fetchCreditosCupo() {
+  try {
+    const { data } = await api.get('/creditos/mis')
+    creditosCupo.value = data
+  } catch {
+    creditosCupo.value = []
+  }
+}
+
+function onTarjetaGuardadaCupo(t) {
+  tarjetasCupo.value.push(t)
+  tarjetaSeleccionadaCupo.value = t
+  mostrarNuevaTarjetaCupo.value = false
+}
+
+async function irAPagarCupo() {
+  confirmandoPagoCupo.value = true
+  if (montoPagoCupo.value !== 'credito') {
+    await fetchTarjetasCupo()
+  }
+}
+
+async function aceptarCupoLista() {
+  reservandoLoading.value = true
+  error.value = ''
+  try {
+    const tipo = tipoPreferenciaLista.value || 'no_abonado'
+    const usarCredito = montoPagoCupo.value === 'credito'
+    const montoPagar = usarCredito ? 'total' : montoPagoCupo.value
+    // El metodo_pago solo se manda si realmente hay un cobro: con tarjeta
+    // cuando corresponde, o ninguno si el credito cubre todo. Asi evitamos
+    // registrar pagos fantasma cuando no hubo una confirmacion real.
+    const metodoPago = montoCupoAPagar.value > 0 ? 'tarjeta_credito' : null
+
+    const { data } = await api.post('/reservas/', {
+      clase_id: parseInt(route.params.id),
+      tipo,
+      monto_pagar: montoPagar,
+      metodo_pago: metodoPago,
+      usar_credito: usarCredito
+    })
+    if (data.en_espera) {
+      mensaje.value = data.mensaje
+    } else {
+      mensaje.value = montoPagoCupo.value === 'senia'
+        ? 'Reserva confirmada y seña pagada. El resto lo abonás al llegar a la clase.'
+        : 'Reserva confirmada y pago realizado con éxito.'
+      miReserva.value = data.reserva
+      cupoReservadoParaMi.value = false
+    }
+    await fetchClase()
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Error al confirmar la reserva'
+  } finally {
+    reservandoLoading.value = false
+  }
+}
+
+async function rechazarCupoLista() {
+  if (!listaEsperaIdToken.value) return
+  reservandoLoading.value = true
+  error.value = ''
+  try {
+    const { data } = await api.post(`/reservas/lista-espera/${listaEsperaIdToken.value}/rechazar-app`)
+    cupoReservadoParaMi.value = false
+    mensaje.value = data.mensaje || 'Rechazaste el cupo. Se lo ofrecimos a la siguiente persona en la lista de espera.'
+  } catch (e) {
+    error.value = e.response?.data?.error || 'No se pudo rechazar el cupo. Probá desde el link del email.'
+  } finally {
+    reservandoLoading.value = false
+  }
+}
+
 onMounted(async () => {
   await fetchClase()
   await Promise.all([fetchMiReserva(), fetchInscriptos(), fetchListaEspera()])
+  await verificarTokenLista()
 })
 </script>
 
@@ -452,4 +758,17 @@ onMounted(async () => {
 .modal { max-width: 460px; width: 100%; }
 .modal h3 { font-size: 22px; margin-bottom: 8px; }
 .field-error { font-size: 12px; color: var(--danger); margin-top: 4px; }
+.cupo-reservado-card { border-color: var(--verde-claro); background: rgba(46,125,50,0.08); }
+.back-btn { background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif; }
+.back-btn:hover { color:var(--text); }
+.pago-opciones { max-width:440px; }
+.pago-opcion { display:flex;align-items:flex-start;gap:12px;padding:14px 16px;background:var(--dark-2);border:2px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:10px;transition:all 0.2s; }
+.pago-opcion:hover { border-color:var(--verde); }
+.pago-opcion.selected { border-color:var(--verde-claro);background:rgba(46,125,50,0.08); }
+.pago-radio { font-size:18px;color:var(--verde-claro);flex-shrink:0;margin-top:2px; }
+.tarjeta-opcion { display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--dark-3);border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.2s;margin-bottom:8px; }
+.tarjeta-opcion:hover { border-color:var(--verde); }
+.tarjeta-opcion.selected { border-color:var(--verde-claro);background:rgba(46,125,50,0.08); }
+.tarjeta-icon { font-size:24px; }
+.tarjeta-check { margin-left:auto;color:var(--verde-claro);font-size:18px;font-weight:700; }
 </style>

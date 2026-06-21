@@ -65,6 +65,8 @@ def ensure_schema_compatibility(app):
         columnas_susp = {c['name'] for c in inspector.get_columns('suspensiones')}
         tiene_pagos = inspector.has_table('pagos')
         columnas_pago = {c['name'] for c in inspector.get_columns('pagos')} if tiene_pagos else set()
+        tiene_lista_espera = inspector.has_table('lista_espera')
+        columnas_lista_espera = {c['name'] for c in inspector.get_columns('lista_espera')} if tiene_lista_espera else set()
 
         numeric_type = 'NUMERIC(10, 2)' if dialect != 'sqlite' else 'NUMERIC'
         alteraciones = []
@@ -81,6 +83,9 @@ def ensure_schema_compatibility(app):
 
         if tiene_pagos and 'suspension_id' not in columnas_pago:
             alteraciones.append('ALTER TABLE pagos ADD COLUMN suspension_id INTEGER')
+
+        if tiene_lista_espera and 'origen_cancelacion' not in columnas_lista_espera:
+            alteraciones.append('ALTER TABLE lista_espera ADD COLUMN origen_cancelacion VARCHAR(20)')
 
         for sql in alteraciones:
             db.session.execute(text(sql))

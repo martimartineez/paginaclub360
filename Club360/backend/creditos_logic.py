@@ -75,23 +75,81 @@ def aplicar_creditos_a_reserva(reserva, monto_objetivo):
     return monto_objetivo
 
 
-def notificar_siguiente_en_lista_espera(clase_id, mes=None, anio=None):
-    now = datetime.utcnow()
-    lista = ListaEspera.query.filter_by(
+def _buscar_primero_esperando(clase_id, mes, anio, tipo_preferencia=None):
+    query = ListaEspera.query.filter_by(
         clase_id=clase_id,
         estado='esperando',
-        mes=mes or now.month,
-        anio=anio or now.year
-    ).order_by(ListaEspera.fecha_inscripcion).first()
+        mes=mes,
+        anio=anio
+    )
+    if tipo_preferencia:
+        query = query.filter_by(tipo_preferencia=tipo_preferencia)
+    return query.order_by(ListaEspera.fecha_inscripcion).first()
+
+
+def siguiente_candidato_lista_espera(clase_id, mes, anio, tipo_origen):
+    """Decide a quien le toca el cupo liberado, segun el tipo de la reserva
+    que se cancelo:
+
+    - Cancela un ABONADO: se ofrece primero a la lista de abonados. Si esta
+      vacia, se ofrece a la lista de no_abonados (fallback).
+    - Cancela un NO_ABONADO: se ofrece a la 'lista general', que es la union
+      cronologica de abonados + no_abonados (quien se anoto primero, sin
+      importar el tipo).
+
+    Si no hay nadie en la lista que corresponda, devuelve None y el cupo
+    queda libre para cualquiera.
+    """
+    print(
+        f'[lista_espera] buscando candidato: clase_id={clase_id} mes={mes} '
+        f'anio={anio} tipo_origen={tipo_origen!r}',
+        flush=True
+    )
+
+    if tipo_origen == 'abonado':
+        candidato = _buscar_primero_esperando(clase_id, mes, anio, 'abonado')
+        if candidato:
+            print(f'[lista_espera] candidato encontrado en lista de abonados: usuario_id={candidato.usuario_id} lista_espera_id={candidato.id}', flush=True)
+            return candidato
+        print('[lista_espera] lista de abonados vacia, probando no_abonados (fallback)', flush=True)
+        candidato = _buscar_primero_esperando(clase_id, mes, anio, 'no_abonado')
+        if candidato:
+            print(f'[lista_espera] candidato encontrado en lista de no_abonados: usuario_id={candidato.usuario_id} lista_espera_id={candidato.id}', flush=True)
+        else:
+            print('[lista_espera] lista de no_abonados tambien vacia. Nadie a notificar.', flush=True)
+        return candidato
+
+    # tipo_origen == 'no_abonado' (o desconocido): lista general combinada
+    candidato = _buscar_primero_esperando(clase_id, mes, anio, tipo_preferencia=None)
+    if candidato:
+        print(f'[lista_espera] candidato encontrado en lista general: usuario_id={candidato.usuario_id} lista_espera_id={candidato.id} tipo_preferencia={candidato.tipo_preferencia}', flush=True)
+    else:
+        print('[lista_espera] lista general vacia. Nadie a notificar.', flush=True)
+    return candidato
+
+
+def notificar_siguiente_en_lista_espera(clase_id, mes=None, anio=None, tipo_origen=None):
+    now = datetime.utcnow()
+    mes = mes or now.month
+    anio = anio or now.year
+
+    lista = siguiente_candidato_lista_espera(clase_id, mes, anio, tipo_origen)
 
     if not lista:
         return None
 
     lista.estado = 'notificado'
+    lista.origen_cancelacion = tipo_origen
+    mail_enviado = enviar_aviso_cupo_liberado(lista)
+    print(
+        f'[lista_espera] notificado usuario_id={lista.usuario_id} '
+        f'lista_espera_id={lista.id} mail_enviado={mail_enviado}',
+        flush=True
+    )
     return {
         'notificado_usuario_id': lista.usuario_id,
         'lista_espera_id': lista.id,
-        'mail_lista_espera_enviado': enviar_aviso_cupo_liberado(lista)
+        'mail_lista_espera_enviado': mail_enviado
     }
 
 
@@ -162,7 +220,8 @@ def cancelar_reserva_con_creditos(reserva):
     notificacion = notificar_siguiente_en_lista_espera(
         reserva.clase_id,
         mes=reserva.clase.fecha.month,
-        anio=reserva.clase.fecha.year
+        anio=reserva.clase.fecha.year,
+        tipo_origen=reserva.tipo
     )
     if notificacion:
         resultado.update(notificacion)

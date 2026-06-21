@@ -379,10 +379,14 @@ def update_clase(clase_id):
             return jsonify({'error': f'No podés bajar el cupo por debajo de los inscriptos actuales ({inscriptos})'}), 400
         clase.cupo_maximo = nuevo_cupo
         if cupos_antes <= 0 and clase.cupos_disponibles() > 0:
+            # Esto no es una cancelacion de un tipo en particular (lo decide
+            # el admin subiendo el cupo), asi que usamos la lista general
+            # (abonados + no_abonados combinados por orden cronologico).
             resultado = notificar_siguiente_en_lista_espera(
                 clase.id,
                 mes=clase.fecha.month,
-                anio=clase.fecha.year
+                anio=clase.fecha.year,
+                tipo_origen=None
             )
     db.session.commit()
     response = clase.to_dict()
