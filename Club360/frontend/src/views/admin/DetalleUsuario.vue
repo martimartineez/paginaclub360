@@ -36,7 +36,7 @@
       <h3 style="font-size:18px;margin-bottom:16px">Acciones</h3>
       <div class="acciones-grid">
         <template v-if="usuario.rol === 'cliente'">
-          <button class="accion-btn" @click="tab = 'reservas'; fetchReservas()">
+          <button class="accion-btn" @click="abrirReservas">
             <span class="accion-icon">📋</span>
             <span>Ver reservas</span>
           </button>
@@ -69,43 +69,66 @@
       <h3 style="font-size:18px;margin-bottom:16px">📋 Reservas de {{ usuario.nombre }}</h3>
       <div v-if="loadingReservas" style="color:var(--text-muted);font-size:14px">Cargando...</div>
       <div v-else-if="reservas.length === 0" style="color:var(--text-muted);font-size:14px">Sin reservas.</div>
-      <table v-else>
-        <thead>
-          <tr><th>Clase</th><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Seña</th><th>Acciones</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="r in reservas" :key="r.id">
-            <td>{{ r.clase?.actividad }}</td>
-            <td style="font-size:13px">{{ formatFecha(r.clase?.fecha) }} {{ r.clase?.hora_inicio }}</td>
-            <td><span class="badge" :class="r.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">{{ r.tipo }}</span></td>
-            <td><span class="badge" :class="estadoBadge(r.estado)">{{ r.estado }}</span></td>
-            <td>
-              <span v-if="r.tipo === 'no_abonado'" :class="r.senia_pagada ? 'text-green' : 'text-danger'">
-                {{ r.senia_pagada ? '✓ Pagada' : '✗ Pendiente' }}
-              </span>
-              <span v-else style="color:var(--text-muted)">—</span>
-            </td>
-            <td>
-              <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <button
-                  v-if="r.tipo === 'no_abonado' && !r.senia_pagada && r.estado === 'activa'"
-                  class="btn btn-primary btn-sm"
-                  @click="abrirPagoSenia(r)"
-                >
-                  💳 Pagar seña
-                </button>
-                <button
-                  v-if="r.estado === 'activa'"
-                  class="btn btn-danger btn-sm"
-                  @click="confirmarCancelarReserva(r)"
-                >
-                  ✕ Cancelar
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <template v-else>
+        <table>
+          <thead>
+            <tr><th>Clase</th><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Seña</th><th>Acciones</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in reservas" :key="r.id">
+              <td>{{ r.clase?.actividad }}</td>
+              <td style="font-size:13px">{{ formatFecha(r.clase?.fecha) }} {{ r.clase?.hora_inicio }}</td>
+              <td><span class="badge" :class="r.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">{{ r.tipo }}</span></td>
+              <td><span class="badge" :class="estadoBadge(r.estado)">{{ r.estado }}</span></td>
+              <td>
+                <span v-if="r.tipo === 'no_abonado'" :class="r.senia_pagada ? 'text-green' : 'text-danger'">
+                  {{ r.senia_pagada ? '✓ Pagada' : '✗ Pendiente' }}
+                </span>
+                <span v-else style="color:var(--text-muted)">—</span>
+              </td>
+              <td>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button
+                    v-if="r.tipo === 'no_abonado' && !r.senia_pagada && r.estado === 'activa'"
+                    class="btn btn-primary btn-sm"
+                    @click="abrirPagoSenia(r)"
+                  >
+                    💳 Pagar seña
+                  </button>
+                  <button
+                    v-if="r.estado === 'activa'"
+                    class="btn btn-danger btn-sm"
+                    @click="confirmarCancelarReserva(r)"
+                  >
+                    ✕ Cancelar
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="reservasPagination.totalPages > 1" class="reservas-pagination">
+          <button
+            class="pagination-arrow"
+            :disabled="!reservasPagination.hasPrev || loadingReservas"
+            aria-label="Página anterior"
+            title="Página anterior"
+            @click="cambiarPaginaReservas(-1)"
+          >
+            ←
+          </button>
+          <button
+            class="pagination-arrow"
+            :disabled="!reservasPagination.hasNext || loadingReservas"
+            aria-label="Página siguiente"
+            title="Página siguiente"
+            @click="cambiarPaginaReservas(1)"
+          >
+            →
+          </button>
+        </div>
+      </template>
     </div>
 
     <!-- Tab: Inscribir a clase -->
@@ -513,6 +536,13 @@ const msg = ref(''), err = ref('')
 
 const reservas = ref([])
 const loadingReservas = ref(false)
+const reservasPage = ref(1)
+const reservasLimit = 8
+const reservasPagination = ref({
+  totalPages: 1,
+  hasPrev: false,
+  hasNext: false
+})
 
 const actividades = ref([])
 const clasesDisponibles = ref([])
@@ -594,14 +624,38 @@ async function fetchUsuario() {
   }
 }
 
+async function abrirReservas() {
+  tab.value = 'reservas'
+  reservasPage.value = 1
+  await fetchReservas()
+}
+
 async function fetchReservas() {
   loadingReservas.value = true
   try {
-    const { data } = await api.get(`/usuarios/${route.params.id}/reservas`)
-    reservas.value = data
+    const { data } = await api.get(`/usuarios/${route.params.id}/reservas`, {
+      params: {
+        page: reservasPage.value,
+        limit: reservasLimit
+      }
+    })
+    reservas.value = data.data
+    reservasPage.value = data.pagination.page
+    reservasPagination.value = {
+      totalPages: data.pagination.total_pages,
+      hasPrev: data.pagination.has_prev,
+      hasNext: data.pagination.has_next
+    }
   } finally {
     loadingReservas.value = false
   }
+}
+
+async function cambiarPaginaReservas(direccion) {
+  const nuevaPagina = reservasPage.value + direccion
+  if (nuevaPagina < 1 || nuevaPagina > reservasPagination.value.totalPages) return
+  reservasPage.value = nuevaPagina
+  await fetchReservas()
 }
 
 async function fetchSuspensiones() {
@@ -920,6 +974,14 @@ onMounted(async () => {
 .abono-total-empl { display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(46,125,50,0.08);border-radius:8px;border:1px solid var(--verde);margin-top:8px;font-size:14px;font-weight:600; }
 .text-green { color:var(--success); }
 .text-warning { color:var(--warning); }
+.reservas-pagination { display:flex;justify-content:center;gap:10px;margin-top:18px; }
+.pagination-arrow {
+  width:42px;height:38px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:8px;background:var(--dark-3);
+  color:var(--text);font-size:20px;cursor:pointer;transition:all 0.2s;
+}
+.pagination-arrow:hover:not(:disabled) { border-color:var(--verde);color:var(--verde-claro); }
+.pagination-arrow:disabled { opacity:0.35;cursor:not-allowed; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { max-width: 440px; width: 100%; }
 .modal h3 { font-size: 22px; margin-bottom: 8px; }

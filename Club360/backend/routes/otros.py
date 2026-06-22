@@ -81,7 +81,20 @@ def get_usuario(uid):
 def get_reservas_usuario(uid):
     """Ver todas las reservas de un cliente específico"""
     sincronizar_suspensiones_usuario(uid, commit=True)
-    reservas = Reserva.query.filter_by(usuario_id=uid).order_by(Reserva.fecha_creacion.desc()).all()
+    query = Reserva.query.filter_by(usuario_id=uid).order_by(Reserva.fecha_creacion.desc())
+
+    paginar = 'page' in request.args or 'limit' in request.args
+    page = max(request.args.get('page', 1, type=int), 1)
+    limit = min(max(request.args.get('limit', 8, type=int), 1), 50)
+    total = query.count() if paginar else None
+
+    if paginar:
+        total_pages = max((total + limit - 1) // limit, 1)
+        page = min(page, total_pages)
+        reservas = query.offset((page - 1) * limit).limit(limit).all()
+    else:
+        reservas = query.all()
+
     result = []
     for r in reservas:
         d = r.to_dict()
@@ -94,6 +107,20 @@ def get_reservas_usuario(uid):
         d['senia_pendiente'] = senia_pendiente
         d['monto_senia'] = float(r.monto_total or 0) * 0.5 if senia_pendiente else 0
         result.append(d)
+
+    if paginar:
+        return jsonify({
+            'data': result,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'total_pages': total_pages,
+                'has_prev': page > 1,
+                'has_next': page < total_pages
+            }
+        }), 200
+
     return jsonify(result), 200
 
 
