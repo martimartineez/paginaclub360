@@ -678,7 +678,7 @@ async function fetchHorariosAbono() {
     const { data } = await api.get('/clases/horarios-disponibles', {
       params: { actividad_id: seleccion.value.actividad.id, usuario_id: auth.user?.id }
     })
-    horariosAbono.value = data
+    horariosAbono.value = data.filter(horario => !horario.clases_mes.every(c => c.ya_inscripto))
   } catch(e) { console.error(e) }
   finally { loadingClases.value = false }
 }

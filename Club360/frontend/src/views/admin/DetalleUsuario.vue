@@ -609,7 +609,7 @@ async function fetchFechasSueltaEmpl() {
     hasta.setMonth(hasta.getMonth() + 1)
     const hastaStr = `${hasta.getFullYear()}-${pad(hasta.getMonth()+1)}-${pad(hasta.getDate())}`
     const { data } = await api.get('/clases/fechas-disponibles', {
-      params: { actividad_id: inscribirForm.value.actividad_id, desde: hoy, hasta: hastaStr }
+      params: { actividad_id: inscribirForm.value.actividad_id, desde: hoy, hasta: hastaStr , usuario_id: route.params.id}
     })
     fechasSueltaEmpl.value = data
   } finally {
@@ -623,9 +623,9 @@ async function fetchHorariosAbonoEmpl() {
   horariosAbonoEmpl.value = []
   try {
     const { data } = await api.get('/clases/horarios-disponibles', {
-      params: { actividad_id: inscribirForm.value.actividad_id }
+      params: { actividad_id: inscribirForm.value.actividad_id , usuario_id: route.params.id}
     })
-    horariosAbonoEmpl.value = data
+    horariosAbonoEmpl.value = data.filter(horario => !horario.clases_mes.every(c => c.ya_inscripto))
   } finally {
     loadingHorariosAbono.value = false
   }

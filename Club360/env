@@ -1,0 +1,4 @@
+DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/club360
+JWT_SECRET_KEY=tu-clave-secreta-muy-segura-cambiar-en-produccion
+FLASK_ENV=development
+FLASK_DEBUG=1

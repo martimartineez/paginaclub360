@@ -94,7 +94,11 @@ def get_clases():
 def get_fechas_disponibles():
     """Fechas únicas con horarios para clase individual — máximo 1 mes desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
-    usuario_id = usuario_id_actual()
+    try:            
+        usuario_id = request.args.get('usuario_id', type=int)   ## Agrego la opcion de mandar el ID del usuario como parametro (util para el empleado)
+    except:
+        usuario_id = usuario_id_actual()
+
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
@@ -111,7 +115,9 @@ def get_fechas_disponibles():
     query = Clase.query.filter_by(activa=True, cancelada=False, actividad_id=actividad_id)
     query = query.filter(Clase.fecha >= desde, Clase.fecha <= hasta)
     clases = query.order_by(Clase.fecha, Clase.hora_inicio).all()
-
+    reservas_id = db.session.query(Reserva.clase_id).filter_by(usuario_id=usuario_id,estado='activa',anio=datetime.now().year, 
+                                                                         mes=datetime.now().month)
+    clases = query.filter(Clase.id.notin_(reservas_id)).order_by(Clase.fecha, Clase.hora_inicio).all()
     fechas = {}
     for c in clases:
         f = c.fecha.isoformat()
@@ -137,7 +143,10 @@ def get_fechas_disponibles():
 def get_horarios_disponibles():
     """Para abonos: combinaciones dia+hora del mes actual, solo desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
-    usuario_id = usuario_id_actual()
+    try:            
+        usuario_id = request.args.get('usuario_id', type=int)   ## Agrego la opcion de mandar el ID del usuario como parametro (util para el empleado)
+    except:
+        usuario_id = usuario_id_actual()
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
