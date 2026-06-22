@@ -130,3 +130,29 @@ def enviar_aviso_cupo_liberado(lista_espera):
     )
 
     return enviar_mail(usuario.email, asunto, cuerpo)
+
+
+def enviar_aviso_alta_demanda(clase, total_en_espera):
+    from models import Usuario
+    admins = Usuario.query.filter_by(rol='administrador').all()
+    if not admins:
+        print('[email] No hay administradores registrados para avisar de alta demanda', flush=True)
+        return
+
+    actividad = clase.actividad.nombre if clase.actividad else 'Actividad desconocida'
+    fecha = clase.fecha.strftime('%d/%m/%Y') if clase.fecha else ''
+    hora = clase.hora_inicio.strftime('%H:%M') if clase.hora_inicio else ''
+    frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+    link_clase = f'{frontend_url}/clases/{clase.id}'
+
+    asunto = f'Club360 - Alta demanda: {actividad} del {fecha}'
+    cuerpo = (
+        f'Actividad: {actividad}\n'
+        f'Fecha: {fecha}\n'
+        f'Hora: {hora} hs\n\n'
+        f'{link_clase}\n'
+    )
+
+    for admin in admins:
+        if admin.email:
+            enviar_mail(admin.email, asunto, cuerpo)

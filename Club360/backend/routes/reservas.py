@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Reserva, Clase, Usuario, ListaEspera, Suspension, Pago, Abono
 from datetime import datetime, date
 from creditos_logic import aplicar_creditos_a_reserva, cancelar_reserva_con_creditos, notificar_siguiente_en_lista_espera
-from email_service import validar_token_rechazo_lista_espera, validar_token_reserva_lista_espera
+from email_service import validar_token_rechazo_lista_espera, validar_token_reserva_lista_espera, enviar_aviso_alta_demanda
 from suspensiones_logic import (
     sincronizar_suspensiones_usuario,
     tiene_suspension_abonado_para_clase,
@@ -107,12 +107,19 @@ def anotar_en_lista_espera(usuario_id, clase_id, tipo, mes=None, anio=None):
     )
     db.session.add(lista)
     db.session.commit()
+
     total_espera = ListaEspera.query.filter_by(
         clase_id=clase_id,
         estado='esperando',
         mes=mes,
         anio=anio
     ).count()
+
+    if total_espera == 10:
+        clase = Clase.query.get(clase_id)
+        if clase:
+            enviar_aviso_alta_demanda(clase, total_espera)
+
     return 'espera', lista.to_dict(), total_espera >= 10
 
 
