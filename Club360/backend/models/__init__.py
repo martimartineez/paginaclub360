@@ -205,6 +205,10 @@ class Reserva(db.Model):
     asistencias = db.relationship('Asistencia', backref='reserva', lazy=True)
 
     def to_dict(self):
+        asistencia = next(
+            (a for a in self.asistencias if a.presente),
+            None
+        )
         return {
             'id': self.id,
             'usuario_id': self.usuario_id,
@@ -221,7 +225,9 @@ class Reserva(db.Model):
             'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
             'cancelaciones_mes': self.cancelaciones_mes,
             'credito_a_favor': self.credito_a_favor,
-            'qr_code': self.qr_code
+            'qr_code': self.qr_code,
+            'asistida': asistencia is not None,
+            'fecha_asistencia': asistencia.fecha.isoformat() if asistencia and asistencia.fecha else None
         }
 
 
@@ -323,6 +329,10 @@ class Credito(db.Model):
 
 class Asistencia(db.Model):
     __tablename__ = 'asistencias'
+    __table_args__ = (
+        db.UniqueConstraint('reserva_id', name='uq_asistencia_reserva'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     reserva_id = db.Column(db.Integer, db.ForeignKey('reservas.id'), nullable=False)
     fecha = db.Column(db.Date, default=date.today)

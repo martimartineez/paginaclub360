@@ -67,6 +67,7 @@ def ensure_schema_compatibility(app):
         columnas_pago = {c['name'] for c in inspector.get_columns('pagos')} if tiene_pagos else set()
         tiene_lista_espera = inspector.has_table('lista_espera')
         columnas_lista_espera = {c['name'] for c in inspector.get_columns('lista_espera')} if tiene_lista_espera else set()
+        tiene_asistencias = inspector.has_table('asistencias')
 
         numeric_type = 'NUMERIC(10, 2)' if dialect != 'sqlite' else 'NUMERIC'
         alteraciones = []
@@ -91,6 +92,18 @@ def ensure_schema_compatibility(app):
             db.session.execute(text(sql))
         if alteraciones:
             db.session.commit()
+
+        if tiene_asistencias:
+            duplicadas = db.session.execute(text(
+                'SELECT reserva_id FROM asistencias '
+                'GROUP BY reserva_id HAVING COUNT(*) > 1 LIMIT 1'
+            )).first()
+            if not duplicadas:
+                db.session.execute(text(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS '
+                    'uq_asistencia_reserva ON asistencias (reserva_id)'
+                ))
+                db.session.commit()
 
 
 def seed_data(app):

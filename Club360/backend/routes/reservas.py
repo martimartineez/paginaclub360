@@ -11,7 +11,7 @@ from suspensiones_logic import (
 )
 from itsdangerous import BadSignature, SignatureExpired
 import os
-import qrcode, io, base64
+from qr_asistencia import generar_qr_asistencia
 
 reservas_bp = Blueprint('reservas', __name__)
 
@@ -33,16 +33,6 @@ def redirect_aceptacion_lista_espera(estado, clase_id=None, lista_espera_id=None
         )
 
     return redirect(f'{frontend_url}/lista-espera/rechazo?estado={estado}')
-
-
-def generar_qr(reserva_id):
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr.add_data(f'CLUB360-RESERVA-{reserva_id}')
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format='PNG')
-    return base64.b64encode(buf.getvalue()).decode('utf-8')
 
 
 def es_periodo_gracia():
@@ -166,7 +156,7 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
     )
     db.session.add(reserva)
     db.session.flush()
-    reserva.qr_code = generar_qr(reserva.id)
+    reserva.qr_code = generar_qr_asistencia(reserva)
 
     try:
         monto_cubierto_por_credito = aplicar_creditos_a_reserva(reserva, monto) if tipo == 'no_abonado' and usar_credito else 0
@@ -453,7 +443,12 @@ def get_mis_reservas():
     else:
         sincronizar_suspensiones_usuario(int(user_id), commit=True)
         reservas = Reserva.query.filter_by(usuario_id=int(user_id)).order_by(Reserva.fecha_creacion.desc()).all()
-    return jsonify([r.to_dict() for r in reservas]), 200
+    resultado = []
+    for reserva in reservas:
+        item = reserva.to_dict()
+        item['qr_code'] = generar_qr_asistencia(reserva)
+        resultado.append(item)
+    return jsonify(resultado), 200
 
 
 @reservas_bp.route('/pagos-resumen', methods=['GET'])
@@ -648,7 +643,7 @@ def crear_abono():
         )
         db.session.add(reserva)
         db.session.flush()
-        reserva.qr_code = generar_qr(reserva.id)
+        reserva.qr_code = generar_qr_asistencia(reserva)
         entrada_lista = ListaEspera.query.filter(
             ListaEspera.usuario_id == target_user_id,
             ListaEspera.clase_id == clase_id,
@@ -863,4 +858,7 @@ def get_qr(reserva_id):
         user = Usuario.query.get(int(user_id))
         if user.rol not in ('empleado', 'administrador'):
             return jsonify({'error': 'Sin permisos'}), 403
-    return jsonify({'qr_code': reserva.qr_code, 'reserva_id': reserva_id}), 200
+    return jsonify({
+        'qr_code': generar_qr_asistencia(reserva),
+        'reserva_id': reserva_id
+    }), 200

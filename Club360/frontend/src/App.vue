@@ -16,6 +16,10 @@
             <router-link to="/admin/usuarios" class="nav-link">
               Gestionar usuarios
             </router-link>
+
+            <router-link to="/empleado/asistencia" class="nav-link">
+              Asistencia QR
+            </router-link>
           </template>
 
           <template v-if="auth.isCliente">
@@ -26,7 +30,7 @@
 
           <template v-if="auth.isCliente">
             <router-link to="/mis-reservas" class="nav-link">
-              Mis Reservas
+              Mis clases
             </router-link>
             <router-link to="/mis-pagos" class="nav-link">
               Mis Pagos

@@ -87,13 +87,13 @@
                 >
                   💳 Pagar total ${{ item.monto_total?.toLocaleString() }}
                 </button> -->
-                <!-- <button
+                <button
                   v-if="item.senia_pagada && item.deuda > 0"
                   class="btn btn-primary btn-sm"
                   @click="abrirPagoIndividual(item, 'restante')"
                 >
                   💳 Pagar restante ${{ item.deuda?.toLocaleString() }}
-                </button> -->
+                </button>
               </template>
             </div>
           </div>

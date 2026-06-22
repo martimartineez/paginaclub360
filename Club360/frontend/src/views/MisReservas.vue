@@ -1,8 +1,8 @@
 <template>
   <div>
     <div class="page-header">
-      <h2>MIS RESERVAS</h2>
-      <p>Gestioná tus clases reservadas</p>
+      <h2>MIS CLASES</h2>
+      <p>Consultá tus clases y presentá el QR para registrar asistencia</p>
     </div>
 
     <div class="alert alert-error" v-if="error">{{ error }}</div>
@@ -27,7 +27,8 @@
           </div>
           <div class="reserva-badges">
             <span class="badge" :class="tipoBadge(r.tipo)">{{ r.tipo === 'abonado' ? 'Mensual' : 'Clase suelta' }}</span>
-            <!-- <span class="badge" :class="estadoBadge(r.estado)">{{ r.estado }}</span> -->
+            <span v-if="r.asistida" class="badge badge-green">✓ Asistida</span>
+            <span v-if="r.estado === 'suspendida'" class="badge badge-yellow">Suspendida</span>
           </div>
         </div>
 
@@ -55,12 +56,12 @@
         </div>
 
         <!-- QR Code -->
-        <div class="reserva-actions" v-if="r.estado === 'activa'">
+        <div class="reserva-actions" v-if="r.estado !== 'cancelada'">
           <button class="btn btn-outline btn-sm" @click="toggleQR(r)">
             {{ qrVisible === r.id ? 'Ocultar QR' : 'Ver QR' }}
           </button>
           <button
-            v-if="esReservaFutura(r)"
+            v-if="r.estado === 'activa' && esReservaFutura(r)"
             class="btn btn-danger btn-sm"
             @click="confirmarCancelar(r)"
           >
@@ -70,9 +71,16 @@
         <div v-else class="reserva-actions">
           <span class="badge badge-red">Cancelada</span>
         </div>
-        <div v-if="r.estado === 'activa' && qrVisible === r.id" class="qr-section">
+        <div v-if="r.estado !== 'cancelada' && qrVisible === r.id" class="qr-section">
           <p class="qr-label">Tu código QR de asistencia</p>
-          <img :src="`data:image/png;base64,${r.qr_code}`" class="qr-img" />
+          <img
+            v-if="r.qr_code"
+            :src="`data:image/png;base64,${r.qr_code}`"
+            :alt="`QR de asistencia para la reserva ${r.id}`"
+            class="qr-img"
+          />
+          <p v-else class="text-danger">No se pudo generar el QR de esta clase.</p>
+          <p class="qr-help">El empleado validará el pago y las suspensiones al escanearlo.</p>
         </div>
       </div>
 
@@ -183,9 +191,6 @@ function sportEmoji(nombre) {
   return map[nombre] || '🏃'
 }
 function tipoBadge(tipo) { return tipo === 'abonado' ? 'badge-green' : 'badge-blue' }
-function estadoBadge(estado) {
-  return { 'activa': 'badge-green', 'cancelada': 'badge-red', 'suspendida': 'badge-yellow' }[estado] || 'badge-yellow'
-}
 function formatFecha(f) {
   if (!f) return ''
   const [y, m, d] = f.split('-')
@@ -293,6 +298,7 @@ onMounted(fetchReservas)
 .qr-section { text-align: center; padding: 16px; background: var(--dark-3); border-radius: 8px; margin-bottom: 14px; }
 .qr-label { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
 .qr-img { width: 160px; height: 160px; border-radius: 8px; }
+.qr-help { max-width: 360px; margin: 10px auto 0; font-size: 12px; color: var(--text-muted); }
 .reserva-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .loading-text, .empty-state { text-align: center; padding: 60px; color: var(--text-muted); }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }

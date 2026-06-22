@@ -2,96 +2,288 @@
   <div>
     <div class="page-header">
       <h2>REGISTRO DE ASISTENCIA</h2>
-      <p>Escaneá el QR del cliente para registrar su asistencia</p>
+      <p>Escaneá el QR de la clase para validar al cliente y marcarlo presente</p>
     </div>
+
+    <div class="alert alert-error" v-if="error">{{ error }}</div>
+    <div class="alert alert-success" v-if="mensaje">{{ mensaje }}</div>
 
     <div class="grid-2">
       <div class="card">
-        <h3 style="margin-bottom:20px;font-size:20px">Ingresar código QR</h3>
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
-          En producción se usaría la cámara del dispositivo. Ingresá el contenido del QR manualmente para simular:
+        <h3 class="scanner-title">Escanear código QR</h3>
+
+        <div v-if="scannerActivo" class="camera-box">
+          <video ref="videoRef" autoplay muted playsinline></video>
+          <div class="camera-frame"></div>
+        </div>
+
+        <div class="scanner-actions">
+          <button
+            v-if="!scannerActivo"
+            class="btn btn-primary"
+            @click="iniciarScanner"
+            :disabled="loading"
+          >
+            📷 Abrir cámara
+          </button>
+          <button v-else class="btn btn-danger" @click="detenerScanner">
+            Detener cámara
+          </button>
+        </div>
+
+        <p class="scanner-help">
+          Apuntá la cámara al QR que el cliente muestra en “Mis clases”.
+          La validación de pago y suspensiones se realiza en el servidor.
         </p>
+
+        <div class="manual-divider"><span>o usar lector/manual</span></div>
+
         <div class="input-group">
           <label>Contenido del QR</label>
-          <input v-model="qrInput" placeholder="CLUB360-RESERVA-1" @keyup.enter="registrar" />
+          <input
+            v-model.trim="qrInput"
+            placeholder="CLUB360-QR:..."
+            autocomplete="off"
+            @keyup.enter="registrar"
+          />
         </div>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Formato: CLUB360-RESERVA-{id}</p>
-        <button class="btn btn-primary" @click="registrar" :disabled="loading || !qrInput">
-          {{ loading ? 'Registrando...' : '📲 Registrar asistencia' }}
+        <button class="btn btn-outline" @click="registrar" :disabled="loading || !qrInput">
+          {{ loading ? 'Validando...' : 'Registrar asistencia' }}
         </button>
       </div>
 
       <div class="card resultado" v-if="resultado">
-        <h3 style="margin-bottom:16px;font-size:20px">
-          {{ resultado.asistencia_registrada ? '✅ Asistencia registrada' : '❌ Error' }}
-        </h3>
+        <h3 class="resultado-title">✅ Asistencia registrada</h3>
         <div class="cliente-info">
           <div class="avatar-lg">{{ resultado.nombre?.charAt(0) }}</div>
           <div>
             <p class="cliente-nombre">{{ resultado.nombre }}</p>
-            <p style="font-size:13px;color:var(--text-muted)">
-              {{ resultado.reserva?.clase?.actividad }} — {{ resultado.reserva?.clase?.dia_semana }} {{ resultado.reserva?.clase?.hora_inicio }} hs
+            <p class="clase-info">
+              {{ resultado.reserva?.clase?.actividad }} —
+              {{ resultado.reserva?.clase?.dia_semana }}
+              {{ resultado.reserva?.clase?.hora_inicio }} hs
             </p>
-            <span class="badge" :class="resultado.reserva?.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">
-              {{ resultado.reserva?.tipo }}
+            <span
+              class="badge"
+              :class="resultado.reserva?.tipo === 'abonado' ? 'badge-green' : 'badge-blue'"
+            >
+              {{ resultado.reserva?.tipo === 'abonado' ? 'Abono' : 'Clase suelta' }}
             </span>
           </div>
         </div>
-
-        <div v-if="resultado.alertas?.length" class="alertas-section">
-          <p class="alerta-titulo">⚠️ Alertas del cliente:</p>
-          <div v-for="(a, i) in resultado.alertas" :key="i" class="alert alert-warning">{{ a }}</div>
+        <div class="alert alert-success">
+          El cliente fue marcado como presente.
         </div>
-        <div v-else class="alert alert-success">Cliente sin alertas pendientes</div>
       </div>
 
-      <div class="card" v-else style="display:flex;align-items:center;justify-content:center;min-height:200px">
-        <div style="text-align:center;color:var(--text-muted)">
-          <p style="font-size:48px">📲</p>
-          <p>El resultado aparecerá aquí</p>
+      <div class="card resultado-placeholder" v-else>
+        <div>
+          <p class="placeholder-icon">📲</p>
+          <p>El resultado del escaneo aparecerá aquí</p>
         </div>
       </div>
     </div>
-
-    <div class="alert alert-error" v-if="error" style="margin-top:16px">{{ error }}</div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
+import jsQR from 'jsqr'
 import api from '../../api.js'
 
 const qrInput = ref('')
 const resultado = ref(null)
 const loading = ref(false)
 const error = ref('')
+const mensaje = ref('')
+const scannerActivo = ref(false)
+const videoRef = ref(null)
+
+let stream = null
+let detector = null
+let scanTimer = null
+let detectando = false
+const canvasLectura = document.createElement('canvas')
+const canvasContexto = canvasLectura.getContext('2d', { willReadFrequently: true })
+
+function limpiarMensajes() {
+  error.value = ''
+  mensaje.value = ''
+  resultado.value = null
+}
+
+async function iniciarScanner() {
+  limpiarMensajes()
+  if (!navigator.mediaDevices?.getUserMedia) {
+    error.value = 'La cámara no está disponible en este dispositivo.'
+    return
+  }
+
+  try {
+    detector = null
+    if ('BarcodeDetector' in window) {
+      const formatos = await window.BarcodeDetector.getSupportedFormats()
+      if (formatos.includes('qr_code')) {
+        detector = new window.BarcodeDetector({ formats: ['qr_code'] })
+      }
+    }
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    })
+    scannerActivo.value = true
+    await new Promise(resolve => setTimeout(resolve, 0))
+    videoRef.value.srcObject = stream
+    await videoRef.value.play()
+    programarDeteccion()
+  } catch (e) {
+    detenerScanner()
+    error.value = e?.name === 'NotAllowedError'
+      ? 'No se concedió permiso para usar la cámara.'
+      : 'No se pudo iniciar la cámara. Verificá que no esté siendo usada por otra aplicación.'
+  }
+}
+
+function programarDeteccion() {
+  if (!scannerActivo.value) return
+  scanTimer = window.setTimeout(detectarQr, 250)
+}
+
+async function leerContenidoQr() {
+  if (detector) {
+    const codigos = await detector.detect(videoRef.value)
+    return codigos.find(codigo => codigo.rawValue)?.rawValue || ''
+  }
+
+  const video = videoRef.value
+  if (!video.videoWidth || !video.videoHeight || !canvasContexto) return ''
+
+  canvasLectura.width = video.videoWidth
+  canvasLectura.height = video.videoHeight
+  canvasContexto.drawImage(video, 0, 0, canvasLectura.width, canvasLectura.height)
+  const imagen = canvasContexto.getImageData(
+    0,
+    0,
+    canvasLectura.width,
+    canvasLectura.height
+  )
+  return jsQR(imagen.data, imagen.width, imagen.height, {
+    inversionAttempts: 'attemptBoth'
+  })?.data || ''
+}
+
+async function detectarQr() {
+  if (!scannerActivo.value || !videoRef.value || detectando) {
+    programarDeteccion()
+    return
+  }
+
+  detectando = true
+  try {
+    const contenido = await leerContenidoQr()
+    if (contenido) {
+      qrInput.value = contenido
+      detenerScanner()
+      await registrar()
+      return
+    }
+  } catch {
+    // Algunos navegadores fallan mientras el video todavía está calentando.
+  } finally {
+    detectando = false
+  }
+  programarDeteccion()
+}
+
+function detenerScanner() {
+  scannerActivo.value = false
+  if (scanTimer) window.clearTimeout(scanTimer)
+  scanTimer = null
+  if (stream) stream.getTracks().forEach(track => track.stop())
+  stream = null
+  if (videoRef.value) videoRef.value.srcObject = null
+}
 
 async function registrar() {
-  if (!qrInput.value) return
+  if (!qrInput.value || loading.value) return
+  detenerScanner()
+  limpiarMensajes()
   loading.value = true
-  error.value = ''
-  resultado.value = null
   try {
-    const { data } = await api.post('/asistencia/registrar', { qr_data: qrInput.value })
+    const { data } = await api.post('/asistencia/registrar', {
+      qr_data: qrInput.value
+    })
     resultado.value = data
+    mensaje.value = data.mensaje || 'Asistencia registrada correctamente.'
     qrInput.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || 'Error al registrar asistencia'
+    error.value = e.response?.data?.error || 'No se pudo registrar la asistencia.'
   } finally {
     loading.value = false
   }
 }
+
+onBeforeUnmount(detenerScanner)
 </script>
 
 <style scoped>
-.cliente-info { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
-.avatar-lg {
-  width:52px; height:52px;
-  background:linear-gradient(135deg, var(--verde), var(--azul));
-  border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-size:20px; font-weight:700; flex-shrink:0;
+.scanner-title, .resultado-title { margin-bottom: 18px; font-size: 20px; }
+.scanner-actions { display: flex; gap: 10px; margin-bottom: 14px; }
+.scanner-help { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+.camera-box {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: #000;
 }
-.cliente-nombre { font-size:18px; font-weight:600; margin-bottom:4px; }
-.alerta-titulo { font-size:14px; font-weight:600; margin-bottom:10px; color:var(--warning); }
+.camera-box video { width: 100%; height: 100%; object-fit: cover; }
+.camera-frame {
+  position: absolute;
+  inset: 18%;
+  border: 3px solid var(--verde-claro);
+  border-radius: 12px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.25);
+}
+.manual-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.manual-divider::before, .manual-divider::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+.cliente-info { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.avatar-lg {
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, var(--verde), var(--azul));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.cliente-nombre { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+.clase-info { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.resultado-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.placeholder-icon { font-size: 48px; margin-bottom: 8px; }
 </style>

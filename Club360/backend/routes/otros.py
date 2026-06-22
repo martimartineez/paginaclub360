@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Usuario, Actividad, Asistencia, Reserva, Suspension, Pago, Credito
+from models import db, Usuario, Actividad, Reserva, Suspension, Pago, Credito
+from asistencia_logic import AsistenciaRechazada, registrar_asistencia_qr
 from suspensiones_logic import (
     resolver_suspension_con_pago,
     sincronizar_suspensiones_usuario,
@@ -233,45 +234,28 @@ def mis_creditos():
 @jwt_required()
 @require_rol('empleado', 'administrador')
 def registrar_asistencia():
-    user_id = get_jwt_identity()
-    data = request.get_json()
-    qr_data = data.get('qr_data', '')
-    if 'CLUB360-RESERVA-' in qr_data:
-        reserva_id = int(qr_data.replace('CLUB360-RESERVA-', ''))
-    else:
-        return jsonify({'error': 'QR inválido'}), 400
+    data = request.get_json(silent=True) or {}
+    try:
+        asistencia, reserva = registrar_asistencia_qr(
+            data.get('qr_data'),
+            int(get_jwt_identity())
+        )
+    except AsistenciaRechazada as exc:
+        return jsonify({
+            'error': exc.mensaje,
+            'codigo': exc.codigo,
+            'asistencia_registrada': False
+        }), exc.status
 
-    reserva = Reserva.query.get_or_404(reserva_id)
     cliente = reserva.cliente
-
-    sincronizar_suspensiones_usuario(cliente.id, commit=True)
-
-    if reserva.tipo == 'abonado' and tiene_suspension_abonado_para_clase(cliente.id, reserva.clase):
-        return jsonify({'error': 'Cliente suspendido para este turno'}), 403
-
-    if reserva.estado != 'activa':
-        return jsonify({'error': 'La reserva no esta activa'}), 400
-
-    estado_cliente = {'nombre': f'{cliente.nombre} {cliente.apellido}', 'alertas': []}
-
-    suspensiones = Suspension.query.filter_by(usuario_id=cliente.id, activa=True).all()
-    for s in suspensiones:
-        estado_cliente['alertas'].append(f'Suspensión activa ({s.tipo}): deuda ${s.monto_deuda}')
-
-    if reserva.tipo == 'no_abonado' and not reserva.senia_pagada:
-        estado_cliente['alertas'].append('Seña pendiente de pago')
-
-    asistencia = Asistencia(
-        reserva_id=reserva_id,
-        presente=True,
-        registrado_por=int(user_id)
-    )
-    db.session.add(asistencia)
-    db.session.commit()
-
-    estado_cliente['asistencia_registrada'] = True
-    estado_cliente['reserva'] = reserva.to_dict()
-    return jsonify(estado_cliente), 200
+    return jsonify({
+        'mensaje': 'Asistencia registrada correctamente.',
+        'asistencia_registrada': True,
+        'nombre': f'{cliente.nombre} {cliente.apellido}',
+        'usuario_id': cliente.id,
+        'asistencia': asistencia.to_dict(),
+        'reserva': reserva.to_dict()
+    }), 201
 
 
 # ---- SUSPENSIONES ----
