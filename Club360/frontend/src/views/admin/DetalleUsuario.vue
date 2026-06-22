@@ -163,13 +163,26 @@
                 @click="elegirHorarioAbonoEmpl(op)"
               >
                 <span style="font-weight:600;font-size:15px">{{ op.hora_inicio }}</span>
-                <span style="font-size:11px;color:var(--text-muted)">{{ op.clases_mes.filter(c=>c.cupos_disponibles>0).length }} con cupo</span>
+                <span
+                  style="font-size:11px"
+                  :class="op.clases_mes.some(c => c.cupos_disponibles > 0) ? 'text-green' : 'text-warning'"
+                >
+                  {{ op.clases_mes.some(c => c.cupos_disponibles > 0)
+                    ? `${op.clases_mes.filter(c => c.cupos_disponibles > 0).length} con cupo`
+                    : 'Lista de espera' }}
+                </span>
               </div>
             </div>
 
             <!-- Detalle del abono -->
             <div v-if="loadingDetalleAbonoEmpl" style="color:var(--text-muted);font-size:13px">Calculando abono...</div>
             <div v-else-if="detalleAbonoEmpl" style="margin-top:8px">
+              <div v-if="detalleAbonoEmpl.total_disponibles === 0" class="alert alert-warning" style="font-size:13px;margin-bottom:10px">
+                ⏳ Ninguna clase de este turno tiene cupo. Al confirmar, se anotará al cliente en la lista de espera de todas esas clases y no se registrará ningún cobro.
+              </div>
+              <div v-else-if="clasesParaListaEspera.length > 0" class="alert alert-warning" style="font-size:13px;margin-bottom:10px">
+                ⏳ Las {{ clasesParaListaEspera.length }} clase(s) sin cupo se agregarán a la lista de espera y no se cobrarán.
+              </div>
               <p style="font-size:13px;font-weight:600;margin-bottom:8px">Clases del abono:</p>
               <div class="abono-detalle-lista">
                 <div v-for="c in detalleAbonoEmpl.clases" :key="c.clase_id"
@@ -184,7 +197,11 @@
                   </div>
                   <span v-if="c.incluida_en_abono" style="font-size:13px;color:var(--verde-claro);font-weight:600">${{ c.precio_clase?.toLocaleString() }}</span>
                   <span v-else-if="c.ya_inscripto" style="font-size:11px;color:var(--azul-claro)">Ya inscripto</span>
-                  <span v-else style="font-size:11px;color:var(--danger)">{{ c.cancelada ? 'Cancelada' : 'Sin cupo' }}</span>
+                  <span v-else-if="c.cancelada" style="font-size:11px;color:var(--danger)">Cancelada</span>
+                  <span v-else-if="c.suspendida" style="font-size:11px;color:var(--danger)">Suspendida</span>
+                  <span v-else style="font-size:11px;color:var(--warning);font-weight:600">
+                    {{ c.en_espera ? 'Ya está en lista de espera' : 'Se anotará en lista de espera' }}
+                  </span>
                 </div>
               </div>
               <div v-if="detalleAbonoEmpl.ya_inscripto_en?.length" class="alert alert-warning" style="font-size:13px;margin-top:8px">
@@ -310,9 +327,16 @@
     <!-- Modal confirmación inscripción en efectivo -->
     <div class="modal-overlay" v-if="modalConfirmInscripcion" @click.self="modalConfirmInscripcion = false">
       <div class="modal card">
-        <h3>💵 Confirmar inscripción en efectivo</h3>
-        <p style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
+        <h3>
+          {{ inscribirForm.tipo === 'abonado' && detalleAbonoEmpl?.total_disponibles === 0
+            ? '⏳ Confirmar lista de espera'
+            : '💵 Confirmar inscripción en efectivo' }}
+        </h3>
+        <p v-if="inscribirForm.tipo !== 'abonado' || detalleAbonoEmpl?.total_disponibles > 0" style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
           El cliente <strong>{{ usuario?.nombre }} {{ usuario?.apellido }}</strong> pagará en efectivo en la sede.
+        </p>
+        <p v-else style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
+          El cliente <strong>{{ usuario?.nombre }} {{ usuario?.apellido }}</strong> será anotado en la lista de espera. No se registrará ningún cobro.
         </p>
 
         <!-- Detalle para clase suelta -->
@@ -358,6 +382,10 @@
             <span class="confirm-label">Clases incluidas</span>
             <span>{{ detalleAbonoEmpl.total_disponibles }} de {{ detalleAbonoEmpl.total_clases_mes }} este mes</span>
           </div>
+          <div v-if="clasesParaListaEspera.length > 0" class="confirm-row-modal">
+            <span class="confirm-label" style="color:var(--warning)">Lista de espera</span>
+            <span style="color:var(--warning);font-weight:600">{{ clasesParaListaEspera.length }} clase(s)</span>
+          </div>
           <div v-if="detalleAbonoEmpl.aplicar_descuento" class="confirm-row-modal">
             <span class="confirm-label">Descuento</span>
             <span style="color:var(--success)">50% por ingreso a mitad de mes</span>
@@ -367,12 +395,19 @@
             <span style="font-weight:700;color:var(--verde-claro);font-size:18px">${{ detalleAbonoEmpl.monto_total?.toLocaleString() }}</span>
           </div>
         </template>
-        <div class="alert alert-warning" style="margin-top:12px">
+        <div v-if="inscribirForm.tipo !== 'abonado' || detalleAbonoEmpl?.total_disponibles > 0" class="alert alert-warning" style="margin-top:12px">
           ⚠️ Al confirmar, el sistema registrará el cobro en efectivo automáticamente.
+        </div>
+        <div v-else class="alert alert-warning" style="margin-top:12px">
+          ⏳ Al confirmar, el cliente quedará en la lista de espera de las clases sin cupo. No se registrará ningún cobro.
         </div>
         <div style="display:flex;gap:10px;margin-top:16px">
           <button class="btn btn-primary" @click="inscribirCliente" :disabled="inscribiendo">
-            {{ inscribiendo ? 'Procesando...' : '✓ Confirmar inscripción en efectivo' }}
+            {{ inscribiendo
+              ? 'Procesando...'
+              : (inscribirForm.tipo === 'abonado' && detalleAbonoEmpl?.total_disponibles === 0
+                ? '⏳ Anotar en lista de espera'
+                : '✓ Confirmar inscripción en efectivo') }}
           </button>
           <button class="btn btn-outline" @click="modalConfirmInscripcion = false">Cancelar</button>
         </div>
@@ -489,6 +524,11 @@ const horariosAbonoEmpl = ref([])
 const loadingHorariosAbono = ref(false)
 const detalleAbonoEmpl = ref(null)
 const loadingDetalleAbonoEmpl = ref(false)
+const clasesParaListaEspera = computed(() =>
+  detalleAbonoEmpl.value?.clases?.filter(
+    c => !c.incluida_en_abono && !c.ya_inscripto && !c.cancelada && !c.suspendida
+  ) || []
+)
 // clase suelta empleado
 const sueltaDiaEmpl = ref(null)
 const sueltaHorarioEmpl = ref(null)
@@ -659,17 +699,25 @@ async function inscribirCliente() {
   err.value = ''
   try {
     if (inscribirForm.value.tipo === 'abonado' && detalleAbonoEmpl.value) {
-      // Abono: inscribir a todas las clases disponibles del mes
+      // Abono: reservar las disponibles y anotar las clases llenas en lista de espera.
       const clasesIds = detalleAbonoEmpl.value.clases
         .filter(c => c.incluida_en_abono)
         .map(c => c.clase_id)
+      const clasesSinCupoIds = clasesParaListaEspera.value.map(c => c.clase_id)
       const { data } = await api.post('/reservas/abono', {
-        clases_ids: clasesIds,
+        clases_ids: [...clasesIds, ...clasesSinCupoIds],
         monto_total: detalleAbonoEmpl.value.monto_total,
         metodo_pago: 'efectivo',
         usuario_id: parseInt(route.params.id)
       })
-      msg.value = `${usuario.value.nombre} inscripto en ${data.total_inscripto} clase(s). Total cobrado: $${detalleAbonoEmpl.value.monto_total?.toLocaleString()}`
+      const totalEspera = data.clases_en_espera?.length || 0
+      if (data.total_inscripto === 0 && totalEspera > 0) {
+        msg.value = `${usuario.value.nombre} fue anotado en la lista de espera de ${totalEspera} clase(s). No se registró ningún cobro.`
+      } else if (totalEspera > 0) {
+        msg.value = `${usuario.value.nombre} fue inscripto en ${data.total_inscripto} clase(s) y anotado en lista de espera de ${totalEspera}. Total cobrado: $${detalleAbonoEmpl.value.monto_total?.toLocaleString()}`
+      } else {
+        msg.value = `${usuario.value.nombre} inscripto en ${data.total_inscripto} clase(s). Total cobrado: $${detalleAbonoEmpl.value.monto_total?.toLocaleString()}`
+      }
     } else {
       // Clase suelta
       const { data } = await api.post(`/usuarios/${route.params.id}/inscribir`, {
