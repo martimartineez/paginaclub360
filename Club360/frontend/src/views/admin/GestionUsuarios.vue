@@ -18,7 +18,7 @@
         <div class="input-group" style="margin:0;flex:1;min-width:200px">
           <input v-model="busqueda" placeholder="Buscar por nombre, apellido, DNI o email..." @input="fetchUsuarios" />
         </div>
-        <div class="input-group" style="margin:0">
+        <div class="input-group" style="margin:0" v-if="auth.isAdmin">
           <select v-model="filtroRol" @change="fetchUsuarios">
             <option value="">Todos los roles</option>
             <option value="cliente">Clientes</option>

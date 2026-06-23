@@ -94,11 +94,7 @@ def get_clases():
 def get_fechas_disponibles():
     """Fechas únicas con horarios para clase individual — máximo 1 mes desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
-    try:            
-        usuario_id = request.args.get('usuario_id', type=int)   ## Agrego la opcion de mandar el ID del usuario como parametro (util para el empleado)
-    except:
-        usuario_id = usuario_id_actual()
-
+    usuario_id = request.args.get('usuario_id', type=int) or usuario_id_actual() ## doy la opcion de mandar el ID como parametro
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
@@ -143,10 +139,7 @@ def get_fechas_disponibles():
 def get_horarios_disponibles():
     """Para abonos: combinaciones dia+hora del mes actual, solo desde hoy"""
     actividad_id = request.args.get('actividad_id', type=int)
-    try:            
-        usuario_id = request.args.get('usuario_id', type=int)   ## Agrego la opcion de mandar el ID del usuario como parametro (util para el empleado)
-    except:
-        usuario_id = usuario_id_actual()
+    usuario_id = request.args.get('usuario_id', type=int) or usuario_id_actual() ## doy la opcion de mandar el ID como parametro
     if not actividad_id:
         return jsonify({'error': 'actividad_id requerido'}), 400
 
