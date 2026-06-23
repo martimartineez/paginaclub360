@@ -40,7 +40,7 @@
             <span class="accion-icon">📋</span>
             <span>Ver reservas</span>
           </button>
-          <button class="accion-btn" @click="tab = 'inscribir'">
+          <button class="accion-btn" @click="inscribir">
             <span class="accion-icon">➕</span>
             <span>Inscribir a clase</span>
           </button>
@@ -636,6 +636,10 @@ async function abrirReservas() {
   await fetchReservas()
 }
 
+async function inscribir() {
+  tab.value = 'inscribir'
+  resetInscribirState()
+}
 async function fetchReservas() {
   loadingReservas.value = true
   try {
