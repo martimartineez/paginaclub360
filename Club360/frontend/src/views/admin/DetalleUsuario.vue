@@ -261,7 +261,7 @@
                 @click="sueltaDiaEmpl = dia; inscribirForm.clase_id = null"
               >
                 <span style="font-size:15px;font-weight:600">{{ dia.dia_semana }}</span>
-                <span style="font-size:13px;color:var(--verde-claro)">{{ formatFecha(dia.fecha) }}</span>
+                <span style="font-size:13px;color:var(--verde-claro)">{{ formatFechaCorta(dia.fecha) }}</span>
                 <span style="font-size:11px;color:var(--text-muted)">{{ dia.horarios.length }} horario(s)</span>
               </div>
             </div>
@@ -270,7 +270,7 @@
           <!-- Paso 2: elegir horario -->
           <div v-else-if="!sueltaHorarioEmpl">
             <div class="fecha-sel-banner-empl">
-              <span>📅 {{ sueltaDiaEmpl.dia_semana }} {{ formatFecha(sueltaDiaEmpl.fecha) }}</span>
+              <span>📅 {{ sueltaDiaEmpl.dia_semana }} {{ formatFechaCorta(sueltaDiaEmpl.fecha) }}</span>
               <button class="btn btn-outline btn-sm" @click="sueltaDiaEmpl = null; sueltaHorarioEmpl = null; inscribirForm.clase_id = null">Cambiar día</button>
             </div>
             <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Seleccioná el horario:</p>
@@ -610,6 +610,12 @@ function formatFecha(fechaStr) {
   if (!fechaStr) return ''
   const [y, m, d] = fechaStr.split('-')
   return `${d}/${m}/${y}`
+}
+
+function formatFechaCorta(f) {
+  if (!f) return ''
+  const [y, m, d] = f.split('-')
+  return `${d}/${m}`
 }
 
 async function fetchUsuario() {
