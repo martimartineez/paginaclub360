@@ -40,6 +40,10 @@
         </button>
       </form>
 
+      <p class="auth-footer olvide">
+        <router-link to="/recuperar-password">¿Olvidaste tu contraseña?</router-link>
+      </p>
+
       <p class="auth-footer">
         ¿No tenés cuenta?
         <router-link to="/registro">Registrate</router-link>

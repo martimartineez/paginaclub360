@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from datetime import date
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
 from models import db, Usuario
@@ -177,3 +177,54 @@ def eliminar_tarjeta(tid):
     t.activa = False
     db.session.commit()
     return jsonify({'mensaje': 'Tarjeta eliminada'}), 200
+
+
+@auth_bp.route('/recuperar-password', methods=['POST'])
+def recuperar_password():
+    data = request.get_json()
+    email = (data.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({'error': 'Email requerido'}), 400
+
+    user = Usuario.query.filter_by(email=email, activo=True).first()
+    # Siempre responder igual para no revelar si el email existe
+    if user:
+        from email_service import enviar_mail_recuperacion_password
+        from itsdangerous import URLSafeTimedSerializer
+        s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+        token = s.dumps({'usuario_id': user.id}, salt='reset-password')
+        enviar_mail_recuperacion_password(user, token)
+
+    return jsonify({'mensaje': 'Si el email está registrado, vas a recibir un link para restablecer tu contraseña.'}), 200
+
+
+@auth_bp.route('/reset-password', methods=['POST'])
+def reset_password():
+    from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+    data = request.get_json()
+    token = data.get('token', '')
+    nueva = data.get('nueva_password', '')
+    confirmar = data.get('confirmar_password', '')
+
+    if not token:
+        return jsonify({'error': 'Token requerido'}), 400
+    if len(nueva) < 8:
+        return jsonify({'error': 'La contraseña debe tener al menos 8 caracteres'}), 400
+    if nueva != confirmar:
+        return jsonify({'error': 'Las contraseñas no coinciden'}), 400
+
+    try:
+        s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+        payload = s.loads(token, salt='reset-password', max_age=3600)  # 1 hora
+    except SignatureExpired:
+        return jsonify({'error': 'El link expiró. Solicitá uno nuevo.'}), 400
+    except BadSignature:
+        return jsonify({'error': 'Link inválido.'}), 400
+
+    user = Usuario.query.get(payload.get('usuario_id'))
+    if not user or not user.activo:
+        return jsonify({'error': 'Usuario no encontrado'}), 404
+
+    user.set_password(nueva)
+    db.session.commit()
+    return jsonify({'mensaje': 'Contraseña actualizada correctamente.'}), 200

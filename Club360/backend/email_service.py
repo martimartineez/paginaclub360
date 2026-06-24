@@ -192,3 +192,19 @@ def enviar_recordatorio_pago_abono(usuario, abonos_pendientes):
     )
 
     return enviar_mail(usuario.email, asunto, cuerpo)
+
+def enviar_mail_recuperacion_password(usuario, token):
+    frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+    link = f'{frontend_url}/reset-password?token={token}'
+
+    asunto = 'Club360 - Recuperación de contraseña'
+    cuerpo = (
+        f'Hola {usuario.nombre},\n\n'
+        'Recibimos una solicitud para restablecer la contraseña de tu cuenta.\n\n'
+        'Hacé clic en el siguiente link para crear una nueva contraseña \n\n'
+        f'{link}\n\n'
+        'Si no solicitaste esto, podés ignorar este mail.\n\n'
+        'Saludos,\n'
+        'Club360'
+    )
+    return enviar_mail(usuario.email, asunto, cuerpo)
