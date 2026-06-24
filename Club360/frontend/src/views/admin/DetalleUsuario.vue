@@ -715,7 +715,17 @@ async function fetchFechasSueltaEmpl() {
     const { data } = await api.get('/clases/fechas-disponibles', {
       params: { actividad_id: inscribirForm.value.actividad_id, desde: hoy, hasta: hastaStr , usuario_id: route.params.id}
     })
+
     fechasSueltaEmpl.value = data
+    .map(fecha => ({
+      ...fecha,
+      horarios: fecha.horarios.filter(horario => {
+        const [hh, mm] = horario.hora_inicio.split(':').map(Number)
+        const fechaHorario = new Date(fecha.fecha + 'T' + horario.hora_inicio + ':00')
+        return fechaHorario > ahora
+      })
+    })).filter(fecha => fecha.horarios.length > 0)
+    
   } finally {
     loadingFechasEmpl.value = false
   }
@@ -729,7 +739,18 @@ async function fetchHorariosAbonoEmpl() {
     const { data } = await api.get('/clases/horarios-disponibles', {
       params: { actividad_id: inscribirForm.value.actividad_id , usuario_id: route.params.id}
     })
-    horariosAbonoEmpl.value = data.filter(horario => !horario.clases_mes.every(c => c.ya_inscripto))
+    const ahora = new Date()
+    horariosAbonoEmpl.value = data
+      .map(horario => ({
+        ...horario,
+        clases_mes: horario.clases_mes.filter(c => {
+          const fechaHora = new Date(c.fecha + 'T' + horario.hora_inicio + ':00')
+          return fechaHora > ahora
+        })
+      }))
+      .filter(horario => !horario.clases_mes.every(c => c.ya_inscripto))
+      .filter(horario => horario.clases_mes.length > 0)
+
   } finally {
     loadingHorariosAbono.value = false
   }
