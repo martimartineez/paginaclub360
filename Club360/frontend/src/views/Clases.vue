@@ -665,8 +665,18 @@ async function fetchFechasDisponibles() {
     const hastaStr = `${hasta.getFullYear()}-${pad(hasta.getMonth()+1)}-${pad(hasta.getDate())}`
     const { data } = await api.get('/clases/fechas-disponibles', {
       params: { actividad_id: seleccion.value.actividad.id, desde: hoy, hasta: hastaStr }
-    })
+    })    
     fechasDisponibles.value = data
+      .map(fecha => ({
+        ...fecha,
+        horarios: fecha.horarios.filter(horario => {
+          const [hh, mm] = horario.hora_inicio.split(':').map(Number)
+          const fechaHorario = new Date(fecha.fecha + 'T' + horario.hora_inicio + ':00')
+          return fechaHorario > ahora
+        })
+      })).filter(fecha => fecha.horarios.length > 0)
+    console.log(fechasDisponibles.value)
+
   } catch(e) { console.error(e) }
   finally { loadingClases.value = false }
 }
@@ -678,7 +688,19 @@ async function fetchHorariosAbono() {
     const { data } = await api.get('/clases/horarios-disponibles', {
       params: { actividad_id: seleccion.value.actividad.id, usuario_id: auth.user?.id }
     })
-    horariosAbono.value = data.filter(horario => !horario.clases_mes.every(c => c.ya_inscripto))
+    
+    const ahora = new Date()
+    horariosAbono.value = data
+      .map(horario => ({
+        ...horario,
+        clases_mes: horario.clases_mes.filter(c => {
+          const fechaHora = new Date(c.fecha + 'T' + horario.hora_inicio + ':00')
+          return fechaHora > ahora
+        })
+      }))
+      .filter(horario => !horario.clases_mes.every(c => c.ya_inscripto))
+      .filter(horario => horario.clases_mes.length > 0)
+
   } catch(e) { console.error(e) }
   finally { loadingClases.value = false }
 }
