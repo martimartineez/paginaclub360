@@ -30,7 +30,7 @@
 
           <template v-if="auth.isCliente">
             <router-link to="/mis-reservas" class="nav-link">
-              Mis clases
+              Mis reservas
             </router-link>
             <router-link to="/mis-pagos" class="nav-link">
               Mis Pagos
