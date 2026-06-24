@@ -54,8 +54,26 @@
           </button>
         </template>
         <button
+          class="accion-btn"
+          v-if="auth.isAdmin && usuario.rol === 'empleado'"
+          @click="modalPromoverAdmin = true"
+          :disabled="promoviendoAdmin"
+        >
+          <span class="accion-icon">A</span>
+          <span>Convertir en administrador</span>
+        </button>
+        <button
+          class="accion-btn"
+          v-if="auth.isAdmin && usuario.rol === 'administrador' && !esUsuarioActual"
+          @click="modalDegradarAdmin = true"
+          :disabled="degradandoAdmin"
+        >
+          <span class="accion-icon">E</span>
+          <span>Convertir en empleado</span>
+        </button>
+        <button
           class="accion-btn accion-peligro"
-          v-if="usuario.rol !== 'administrador' && (auth.isAdmin || usuario.rol === 'cliente')"
+          v-if="puedeEliminarUsuario"
           @click="modalEliminar = true"
         >
           <span class="accion-icon">🗑️</span>
@@ -79,7 +97,7 @@
               <td>{{ r.clase?.actividad }}</td>
               <td style="font-size:13px">{{ formatFecha(r.clase?.fecha) }} {{ r.clase?.hora_inicio }}</td>
               <td><span class="badge" :class="r.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">{{ r.tipo }}</span></td>
-              <td><span class="badge" :class="estadoBadge(r.estado)">{{ r.estado }}</span></td>
+              <td><span class="badge" :class="estadoBadge(estadoReserva(r))">{{ estadoReserva(r) }}</span></td>
               <td>
                 <span v-if="r.tipo === 'no_abonado'" :class="r.senia_pagada ? 'text-green' : 'text-danger'">
                   {{ r.senia_pagada ? '✓ Pagada' : '✗ Pendiente' }}
@@ -96,7 +114,7 @@
                     💳 Pagar seña
                   </button>
                   <button
-                    v-if="r.estado === 'activa'"
+                    v-if="r.estado === 'activa' && !r.falto && !r.asistida"
                     class="btn btn-danger btn-sm"
                     @click="confirmarCancelarReserva(r)"
                   >
@@ -458,6 +476,46 @@
       </div>
     </div>
 
+    <!-- Modal convertir empleado en administrador -->
+    <div class="modal-overlay" v-if="modalPromoverAdmin" @click.self="modalPromoverAdmin = false">
+      <div class="modal card">
+        <h3>Convertir en administrador</h3>
+        <p style="color:var(--text-muted);font-size:14px;margin:12px 0">
+          Vas a darle permisos de administrador a
+          <strong>{{ usuario?.nombre }} {{ usuario?.apellido }}</strong>.
+        </p>
+        <div class="alert alert-warning">
+          El usuario podrá gestionar empleados, clases, turnos y configuraciones del sistema.
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-primary" @click="ejecutarPromoverAdmin" :disabled="promoviendoAdmin">
+            {{ promoviendoAdmin ? 'Convirtiendo...' : 'Sí, convertir' }}
+          </button>
+          <button class="btn btn-outline" @click="modalPromoverAdmin = false">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal convertir administrador en empleado -->
+    <div class="modal-overlay" v-if="modalDegradarAdmin" @click.self="modalDegradarAdmin = false">
+      <div class="modal card">
+        <h3>Convertir en empleado</h3>
+        <p style="color:var(--text-muted);font-size:14px;margin:12px 0">
+          Vas a quitarle permisos de administrador a
+          <strong>{{ usuario?.nombre }} {{ usuario?.apellido }}</strong>.
+        </p>
+        <div class="alert alert-warning">
+          Debe quedar al menos un administrador activo en el sistema.
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-primary" @click="ejecutarDegradarAdmin" :disabled="degradandoAdmin">
+            {{ degradandoAdmin ? 'Convirtiendo...' : 'Sí, convertir' }}
+          </button>
+          <button class="btn btn-outline" @click="modalDegradarAdmin = false">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal confirmar cancelación de reserva -->
     <div class="modal-overlay" v-if="modalCancelarReserva" @click.self="modalCancelarReserva = null">
       <div class="modal card">
@@ -587,6 +645,10 @@ const suspensiones = ref([])
 const metodoLevantamiento = ref('efectivo')
 const levantando = ref(null)
 const creandoSuspensionPrueba = ref(false)
+const modalPromoverAdmin = ref(false)
+const promoviendoAdmin = ref(false)
+const modalDegradarAdmin = ref(false)
+const degradandoAdmin = ref(false)
 const modalEliminar = ref(false)
 const eliminando = ref(false)
 const modalCancelarReserva = ref(null)
@@ -596,11 +658,21 @@ const pagoSeniaModal = ref(null)
 const metodoPagoSenia = ref('efectivo')
 const pagandoSenia = ref(false)
 
+const esUsuarioActual = computed(() => Number(usuario.value?.id) === Number(auth.user?.id))
+const puedeEliminarUsuario = computed(() => {
+  if (!usuario.value || esUsuarioActual.value) return false
+  return auth.isAdmin || usuario.value.rol === 'cliente'
+})
+
 function rolBadge(rol) {
   return { 'administrador': 'badge-green', 'empleado': 'badge-blue', 'cliente': 'badge-yellow' }[rol] || 'badge-yellow'
 }
 function estadoBadge(estado) {
-  return { 'activa': 'badge-green', 'cancelada': 'badge-red', 'suspendida': 'badge-yellow' }[estado] || 'badge-yellow'
+  return { 'activa': 'badge-green', 'asistida': 'badge-green', 'cancelada': 'badge-red', 'suspendida': 'badge-yellow', 'falto': 'badge-red' }[estado] || 'badge-yellow'
+}
+function estadoReserva(reserva) {
+  if (reserva.asistida) return 'asistida'
+  return reserva.falto ? 'falto' : reserva.estado
 }
 function sportEmoji(nombre) {
   const map = { 'Fútbol': '⚽', 'Pádel': '🎾', 'Básquet': '🏀', 'Vóley': '🏐' }
@@ -821,6 +893,38 @@ async function ejecutarEliminar() {
   }
 }
 
+async function ejecutarPromoverAdmin() {
+  promoviendoAdmin.value = true
+  err.value = ''
+  msg.value = ''
+  try {
+    const { data } = await api.post(`/usuarios/${route.params.id}/promover-admin`)
+    usuario.value = data.usuario
+    msg.value = data.mensaje || 'Empleado convertido en administrador'
+    modalPromoverAdmin.value = false
+  } catch (e) {
+    err.value = e.response?.data?.error || 'Error al convertir en administrador'
+  } finally {
+    promoviendoAdmin.value = false
+  }
+}
+
+async function ejecutarDegradarAdmin() {
+  degradandoAdmin.value = true
+  err.value = ''
+  msg.value = ''
+  try {
+    const { data } = await api.post(`/usuarios/${route.params.id}/degradar-empleado`)
+    usuario.value = data.usuario
+    msg.value = data.mensaje || 'Administrador convertido en empleado'
+    modalDegradarAdmin.value = false
+  } catch (e) {
+    err.value = e.response?.data?.error || 'Error al convertir en empleado'
+  } finally {
+    degradandoAdmin.value = false
+  }
+}
+
 function confirmarCancelarReserva(r) {
   modalCancelarReserva.value = r
 }
@@ -947,6 +1051,7 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 .accion-btn:hover { border-color: var(--verde); color: var(--verde-claro); transform: translateY(-2px); }
+.accion-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 .accion-peligro { border-color: rgba(218,54,51,0.3) !important; }
 .accion-peligro:hover { border-color: var(--danger) !important; color: var(--danger) !important; }
 .accion-icon { font-size: 28px; }

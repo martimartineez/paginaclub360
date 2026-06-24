@@ -112,11 +112,17 @@ def ensure_schema_compatibility(app):
     """Agrega columnas opcionales nuevas cuando la base ya existia."""
     with app.app_context():
         inspector = inspect(db.engine)
-        if not inspector.has_table('suspensiones'):
-            return
-
         dialect = db.engine.dialect.name
-        columnas_susp = {c['name'] for c in inspector.get_columns('suspensiones')}
+        tiene_suspensiones = inspector.has_table('suspensiones')
+        columnas_susp = {c['name'] for c in inspector.get_columns('suspensiones')} if tiene_suspensiones else set()
+        tiene_clases = inspector.has_table('clases')
+        columnas_clases = {c['name'] for c in inspector.get_columns('clases')} if tiene_clases else set()
+        tiene_turnos = inspector.has_table('turnos')
+        columnas_turnos = {c['name'] for c in inspector.get_columns('turnos')} if tiene_turnos else set()
+        tiene_reservas = inspector.has_table('reservas')
+        columnas_reservas = {c['name'] for c in inspector.get_columns('reservas')} if tiene_reservas else set()
+        tiene_creditos = inspector.has_table('creditos')
+        columnas_creditos = {c['name'] for c in inspector.get_columns('creditos')} if tiene_creditos else set()
         tiene_pagos = inspector.has_table('pagos')
         columnas_pago = {c['name'] for c in inspector.get_columns('pagos')} if tiene_pagos else set()
         tiene_lista_espera = inspector.has_table('lista_espera')
@@ -133,7 +139,7 @@ def ensure_schema_compatibility(app):
             'monto_original': f'{numeric_type} DEFAULT 0',
             'recargo': f'{numeric_type} DEFAULT 0',
         }.items():
-            if nombre not in columnas_susp:
+            if tiene_suspensiones and nombre not in columnas_susp:
                 alteraciones.append(f'ALTER TABLE suspensiones ADD COLUMN {nombre} {tipo}')
 
         if tiene_pagos and 'suspension_id' not in columnas_pago:
@@ -141,6 +147,32 @@ def ensure_schema_compatibility(app):
 
         if tiene_lista_espera and 'origen_cancelacion' not in columnas_lista_espera:
             alteraciones.append('ALTER TABLE lista_espera ADD COLUMN origen_cancelacion VARCHAR(20)')
+
+        for nombre, tipo in {
+            'cancelada_fecha': 'TIMESTAMP',
+            'cancelada_por': 'INTEGER',
+        }.items():
+            if tiene_clases and nombre not in columnas_clases:
+                alteraciones.append(f'ALTER TABLE clases ADD COLUMN {nombre} {tipo}')
+
+        for nombre, tipo in {
+            'cancelado_fecha': 'TIMESTAMP',
+            'cancelado_por': 'INTEGER',
+            'motivo_cancelacion': 'TEXT',
+        }.items():
+            if tiene_turnos and nombre not in columnas_turnos:
+                alteraciones.append(f'ALTER TABLE turnos ADD COLUMN {nombre} {tipo}')
+
+        for nombre, tipo in {
+            'cancelada_por': 'INTEGER',
+            'motivo_cancelacion': 'TEXT',
+            'fecha_cancelacion': 'TIMESTAMP',
+        }.items():
+            if tiene_reservas and nombre not in columnas_reservas:
+                alteraciones.append(f'ALTER TABLE reservas ADD COLUMN {nombre} {tipo}')
+
+        if tiene_creditos and 'motivo' not in columnas_creditos:
+            alteraciones.append('ALTER TABLE creditos ADD COLUMN motivo TEXT')
 
         for sql in alteraciones:
             db.session.execute(text(sql))

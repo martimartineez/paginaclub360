@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Turno, Clase, Actividad, Usuario
 from datetime import datetime, date, timedelta
+from creditos_logic import cancelar_turno_por_admin
 import calendar
 
 turnos_bp = Blueprint('turnos', __name__)
@@ -42,10 +43,13 @@ def generar_clases_para_turno(turno, desde=None, hasta=None):
 
     while fecha <= fin:
         if fecha.weekday() == turno.dia_semana and not es_feriado(fecha):
-            # Verificar si ya existe una clase para este turno en esta fecha
+            # Las clases canceladas quedan como historial. Solo una clase vigente
+            # debe bloquear la generacion de una nueva para ese mismo turno/fecha.
             existente = Clase.query.filter_by(
                 turno_id=turno.id,
-                fecha=fecha
+                fecha=fecha,
+                activa=True,
+                cancelada=False
             ).first()
             if not existente:
                 clase = Clase(
@@ -138,6 +142,9 @@ def crear_turno():
 
     if inactivo:
         inactivo.activo = True
+        inactivo.cancelado_fecha = None
+        inactivo.cancelado_por = None
+        inactivo.motivo_cancelacion = None
         inactivo.cupo_maximo = cupo_maximo
         inactivo.precio_clase = precio_clase
         db.session.commit()
@@ -145,7 +152,9 @@ def crear_turno():
         return jsonify({
             'turno': inactivo.to_dict(),
             'reactivado': True,
-            'mensaje': f'Turno reactivado. '
+            'clases_generadas': generadas,
+            'clases_existentes': existentes,
+            'mensaje': f'Turno reactivado. {generadas} clase(s) nueva(s) generada(s).'
         }), 200
 
     turno = Turno(
@@ -213,32 +222,22 @@ def editar_turno(turno_id):
 @jwt_required()
 @require_rol('administrador')
 def desactivar_turno(turno_id):
-    """Borrado lógico del turno — cancela clases futuras sin inscriptos"""
-    turno = Turno.query.get_or_404(turno_id)
-    if not turno.activo:
-        return jsonify({'error': 'El turno ya está desactivado'}), 400
+    try:
+        resultado = cancelar_turno_por_admin(turno_id, int(get_jwt_identity()))
+        db.session.commit()
+        return jsonify(resultado), 200
+    except ValueError as exc:
+        db.session.rollback()
+        mensaje = str(exc)
+        status = 404 if mensaje == 'El turno no existe' else 400
+        return jsonify({'error': mensaje}), status
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'No se pudo cancelar el turno. No se aplicaron cambios.'}), 500
 
-    turno.activo = False
 
-    # Cancelar clases futuras sin inscriptos
-    hoy = date.today()
-    clases_futuras = Clase.query.filter_by(
-        turno_id=turno_id, activa=True, cancelada=False
-    ).filter(Clase.fecha >= hoy).all()
-
-    canceladas = 0
-    with_inscriptos = 0
-    for clase in clases_futuras:
-        from models import Reserva
-        inscriptos = Reserva.query.filter_by(clase_id=clase.id, estado='activa').count()
-        if inscriptos == 0:
-            clase.activa = False
-            canceladas += 1
-        else:
-            with_inscriptos += 1
-
-    db.session.commit()
-    return jsonify({
-        'mensaje': f'Turno desactivado. {canceladas} clase(s) futuras canceladas.',
-        'clases_con_inscriptos': with_inscriptos
-    }), 200
+@turnos_bp.route('/<int:turno_id>/cancelar', methods=['POST'])
+@jwt_required()
+@require_rol('administrador')
+def cancelar_turno(turno_id):
+    return desactivar_turno(turno_id)

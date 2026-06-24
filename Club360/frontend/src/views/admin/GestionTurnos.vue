@@ -8,7 +8,7 @@
       <button class="btn btn-primary" @click="abrirCrear">+ Nuevo Turno</button>
     </div>
 
-    <!-- <div class="alert alert-error" v-if="error">{{ error }}</div> -->
+    <div class="alert alert-error" v-if="error">{{ error }}</div>
     <div class="alert alert-success" v-if="mensaje">{{ mensaje }}</div>
 
     <div class="card" style="margin-bottom:20px;padding:16px">
@@ -38,7 +38,7 @@
         <thead>
           <tr>
             <th>Actividad</th><th>Día</th><th>Hora</th><th>Cupo</th>
-            <th>Precio/clase</th><th>Clases generadas</th>
+            <th>Precio/clase</th><th>Clases generadas</th><th>Acciones</th>
             <!-- <th>Estado</th> -->
           </tr>
         </thead>
@@ -51,6 +51,16 @@
             <td>${{ t.precio_clase?.toLocaleString() }}</td>
             <td>
               <span class="badge badge-blue">{{ t.total_clases }} clases</span>
+            </td>
+            <td>
+              <button
+                v-if="t.activo"
+                class="btn btn-danger btn-sm"
+                @click="confirmarCancelarTurno(t)"
+              >
+                Cancelar turno
+              </button>
+              <span v-else class="badge badge-red">Cancelado</span>
             </td>
             <!-- <td>
               <span :class="t.activo ? 'badge badge-green' : 'badge badge-red'">
@@ -144,7 +154,23 @@
 
     <div class="modal-overlay" v-if="desactivarModal" @click.self="desactivarModal = null">
       <div class="modal card">
+        <h3>Cancelar turno</h3>
+        <p style="color:var(--text-muted);margin:12px 0;font-size:14px">
+          Vas a cancelar el turno de <strong>{{ desactivarModal.actividad }}</strong>
+          los <strong>{{ desactivarModal.dia_semana_str }}</strong> a las
+          <strong>{{ desactivarModal.hora_inicio }} hs</strong>.
+        </p>
+        <p style="color:var(--text-muted);margin:12px 0;font-size:14px">
+          Se cancelaran todas sus clases futuras y se procesaran devoluciones de senia,
+          descuentos en abonos pendientes o creditos segun corresponda.
+        </p>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-danger" @click="cancelarTurno" :disabled="desactivando">
+            {{ desactivando ? 'Cancelando...' : 'Si, cancelar turno' }}
+          </button>
+          <button class="btn btn-outline" @click="desactivarModal = null">Volver</button>
         </div>
+      </div>
     </div>
   </div>
 </template>
@@ -289,6 +315,29 @@ async function guardar() {
 
 // ... Las demás funciones se mantienen igual ...
 
+function confirmarCancelarTurno(turno) {
+  error.value = ''
+  mensaje.value = ''
+  desactivarModal.value = turno
+}
+
+async function cancelarTurno() {
+  if (!desactivarModal.value) return
+
+  desactivando.value = true
+  error.value = ''
+  mensaje.value = ''
+  try {
+    const { data } = await api.post(`/turnos/${desactivarModal.value.id}/cancelar`)
+    mensaje.value = data.mensaje || 'Turno cancelado correctamente'
+    desactivarModal.value = null
+    await fetchTurnos()
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Error al cancelar turno'
+  } finally {
+    desactivando.value = false
+  }
+}
 async function fetchTurnos() {
   loading.value = true
   try {

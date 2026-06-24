@@ -48,6 +48,10 @@
           </template>
 
             <template v-if="auth.isAdmin">
+              <router-link to="/admin/clases" class="nav-link">
+                Gestion Clases
+              </router-link>
+
               <router-link to="/admin/turnos" class="nav-link">
                 Gestión Turnos
               </router-link>

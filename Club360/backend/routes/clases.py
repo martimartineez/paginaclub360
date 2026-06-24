@@ -2,7 +2,8 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Clase, Actividad, Reserva, ListaEspera, Usuario
 from datetime import datetime, date
-from creditos_logic import notificar_siguiente_en_lista_espera
+from creditos_logic import cancelar_clase_por_admin, notificar_siguiente_en_lista_espera
+from asistencia_logic import sincronizar_faltas_reservas
 from suspensiones_logic import sincronizar_suspensiones_usuario, tiene_suspension_abonado_para_clase
 import calendar
 
@@ -401,23 +402,25 @@ def update_clase(clase_id):
 @jwt_required()
 @require_rol('administrador')
 def cancelar_clase(clase_id):
-    """Borrado lógico: marca como cancelada y libera reservas"""
-    clase = Clase.query.get_or_404(clase_id)
-    if clase.cancelada:
-        return jsonify({'error': 'La clase ya está cancelada'}), 400
-    clase.cancelada = True
-    reservas = Reserva.query.filter_by(clase_id=clase_id, estado='activa').all()
-    for r in reservas:
-        r.estado = 'cancelada'
-    db.session.commit()
-    return jsonify({'mensaje': f'Clase del {clase.fecha} cancelada. {len(reservas)} reserva(s) liberadas.'}), 200
-
+    try:
+        resultado = cancelar_clase_por_admin(clase_id, int(get_jwt_identity()))
+        db.session.commit()
+        return jsonify(resultado), 200
+    except ValueError as exc:
+        db.session.rollback()
+        mensaje = str(exc)
+        status = 404 if mensaje == 'La clase no existe' else 400
+        return jsonify({'error': mensaje}), status
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'No se pudo cancelar la clase. No se aplicaron cambios.'}), 500
 
 @clases_bp.route('/<int:clase_id>/inscriptos', methods=['GET'])
 @jwt_required()
 @require_rol('administrador', 'empleado')
 def get_inscriptos(clase_id):
     reservas = Reserva.query.filter_by(clase_id=clase_id, estado='activa').all()
+    sincronizar_faltas_reservas(reservas, commit=True)
     result = []
     for r in reservas:
         d = r.to_dict()

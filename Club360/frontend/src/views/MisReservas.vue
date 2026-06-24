@@ -18,7 +18,7 @@
 
     <div v-else class="reservas-grid">
       <!-- Reservas normales -->
-      <div v-for="r in reservas" :key="'r-' + r.id" class="reserva-card card" :class="{ 'cancelada': r.estado === 'cancelada' }">
+      <div v-for="r in reservas" :key="'r-' + r.id" class="reserva-card card" :class="{ 'cancelada': r.estado === 'cancelada' && !r.asistida }">
         <div class="reserva-header">
           <span class="sport-emoji">{{ sportEmoji(r.clase?.actividad) }}</span>
           <div class="reserva-info">
@@ -28,6 +28,7 @@
           <div class="reserva-badges">
             <span class="badge" :class="tipoBadge(r.tipo)">{{ r.tipo === 'abonado' ? 'Mensual' : 'Clase suelta' }}</span>
             <span v-if="r.asistida" class="badge badge-green">✓ Asistida</span>
+            <span v-else-if="r.falto" class="badge badge-red">Faltó</span>
             <span v-if="r.estado === 'suspendida'" class="badge badge-yellow">Suspendida</span>
           </div>
         </div>
@@ -56,12 +57,12 @@
         </div>
 
         <!-- QR Code -->
-        <div class="reserva-actions" v-if="r.estado !== 'cancelada'">
-          <button class="btn btn-outline btn-sm" @click="toggleQR(r)">
+        <div class="reserva-actions" v-if="r.estado !== 'cancelada' || r.asistida">
+          <button v-if="!r.falto" class="btn btn-outline btn-sm" @click="toggleQR(r)">
             {{ qrVisible === r.id ? 'Ocultar QR' : 'Ver QR' }}
           </button>
           <button
-            v-if="r.estado === 'activa' && esReservaFutura(r)"
+            v-if="r.estado === 'activa' && esReservaFutura(r) && !r.asistida"
             class="btn btn-danger btn-sm"
             @click="confirmarCancelar(r)"
           >
@@ -71,7 +72,7 @@
         <div v-else class="reserva-actions">
           <span class="badge badge-red">Cancelada</span>
         </div>
-        <div v-if="r.estado !== 'cancelada' && qrVisible === r.id" class="qr-section">
+        <div v-if="(r.estado !== 'cancelada' || r.asistida) && !r.falto && qrVisible === r.id" class="qr-section">
           <p class="qr-label">Tu código QR de asistencia</p>
           <img
             v-if="r.qr_code"

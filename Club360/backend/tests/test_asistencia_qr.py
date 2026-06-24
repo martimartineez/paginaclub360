@@ -1,5 +1,5 @@
 import unittest
-from datetime import date, time
+from datetime import date, datetime, time
 from unittest.mock import patch
 
 from flask import Flask
@@ -173,13 +173,38 @@ class AsistenciaQrTestCase(unittest.TestCase):
         reserva = self.crear_reserva_suelta(1000)
         asistencia, _ = registrar_asistencia_qr(
             contenido_qr_asistencia(reserva),
-            self.empleado.id
+            self.empleado.id,
+            hoy=date(2026, 6, 22)
         )
         self.assertTrue(asistencia.presente)
         self.assertTrue(reserva.to_dict()['asistida'])
         self.assertEqual(reserva.to_dict()['fecha_asistencia'], '2026-06-22')
         self.assertEqual(Asistencia.query.count(), 1)
         self.assert_rechazo(reserva, 'asistencia_duplicada')
+
+    def test_reserva_sigue_pendiente_antes_de_los_15_minutos(self):
+        reserva = self.crear_reserva_suelta(1000)
+        estado, asistencia = reserva.asistencia_estado(datetime(2026, 6, 22, 18, 14))
+        self.assertEqual(estado, 'pendiente')
+        self.assertIsNone(asistencia)
+        self.assertFalse(reserva.asistencia_vencida(datetime(2026, 6, 22, 18, 14)))
+
+    def test_marca_falta_desde_los_15_minutos_sin_asistencia(self):
+        reserva = self.crear_reserva_suelta(1000)
+        with self.assertRaises(AsistenciaRechazada) as contexto:
+            registrar_asistencia_qr(
+                contenido_qr_asistencia(reserva),
+                self.empleado.id,
+                hoy=date(2026, 6, 22),
+                ahora=datetime(2026, 6, 22, 18, 15)
+            )
+
+        self.assertEqual(contexto.exception.codigo, 'asistencia_fuera_de_tiempo')
+        falta = Asistencia.query.filter_by(reserva_id=reserva.id).first()
+        self.assertIsNotNone(falta)
+        self.assertFalse(falta.presente)
+        self.assertTrue(reserva.to_dict()['falto'])
+        self.assertEqual(reserva.to_dict()['estado_asistencia'], 'falto')
 
 
 if __name__ == '__main__':

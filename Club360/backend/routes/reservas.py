@@ -9,6 +9,7 @@ from suspensiones_logic import (
     tiene_suspension_abonado_para_clase,
     tiene_suspension_no_abonado,
 )
+from asistencia_logic import sincronizar_faltas_reservas
 from itsdangerous import BadSignature, SignatureExpired
 import os
 from qr_asistencia import generar_qr_asistencia
@@ -425,9 +426,18 @@ def rechazar_cupo_lista_espera(lista_espera_id):
 @jwt_required()
 def get_mis_lista_espera():
     user_id = int(get_jwt_identity())
-    entradas = ListaEspera.query.filter_by(
-        usuario_id=user_id, estado='esperando'
-    ).order_by(ListaEspera.fecha_inscripcion.desc()).all()
+    entradas = (
+        ListaEspera.query
+        .join(Clase, ListaEspera.clase_id == Clase.id)
+        .filter(
+            ListaEspera.usuario_id == user_id,
+            ListaEspera.estado == 'esperando',
+            Clase.activa.is_(True),
+            Clase.cancelada.is_(False)
+        )
+        .order_by(ListaEspera.fecha_inscripcion.desc())
+        .all()
+    )
     return jsonify([e.to_dict() for e in entradas]), 200
 
 
@@ -443,6 +453,7 @@ def get_mis_reservas():
     else:
         sincronizar_suspensiones_usuario(int(user_id), commit=True)
         reservas = Reserva.query.filter_by(usuario_id=int(user_id)).order_by(Reserva.fecha_creacion.desc()).all()
+    sincronizar_faltas_reservas(reservas, commit=True)
     resultado = []
     for reserva in reservas:
         item = reserva.to_dict()

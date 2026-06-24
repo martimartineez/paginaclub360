@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, time
 
 from sqlalchemy.exc import IntegrityError
 
@@ -25,6 +25,37 @@ def _money(value):
 
 def _rechazar(mensaje, codigo, status=422):
     raise AsistenciaRechazada(mensaje, codigo, status)
+
+
+def marcar_falta_reserva(reserva, hoy=None):
+    existente = Asistencia.query.filter_by(reserva_id=reserva.id).first()
+    if existente:
+        return existente
+
+    falta = Asistencia(
+        reserva_id=reserva.id,
+        fecha=hoy or date.today(),
+        presente=False,
+        registrado_por=None
+    )
+    db.session.add(falta)
+    return falta
+
+
+def sincronizar_faltas_reservas(reservas, ahora=None, commit=False):
+    ahora = ahora or datetime.now()
+    hubo_cambios = False
+    for reserva in reservas:
+        if reserva.asistencia_vencida(ahora) and not reserva.asistencias:
+            marcar_falta_reserva(reserva, hoy=ahora.date())
+            hubo_cambios = True
+
+    if hubo_cambios and commit:
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+    return hubo_cambios
 
 
 def _validar_identidad_qr(payload, reserva):
@@ -91,8 +122,10 @@ def _validar_abono(reserva, hoy):
         )
 
 
-def registrar_asistencia_qr(qr_data, actor_id, hoy=None):
+def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
+    hoy_recibido = hoy is not None
     hoy = hoy or date.today()
+    ahora = ahora or (datetime.combine(hoy, time.min) if hoy_recibido else datetime.now())
     try:
         payload = leer_token_asistencia(qr_data)
     except QrAsistenciaInvalido as exc:
@@ -110,11 +143,29 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None):
     sincronizar_suspensiones_usuario(reserva.usuario_id, commit=True)
     _validar_reserva_general(reserva)
 
-    if Asistencia.query.filter_by(reserva_id=reserva.id).first():
+    asistencia_existente = Asistencia.query.filter_by(reserva_id=reserva.id).first()
+    if asistencia_existente:
+        if asistencia_existente.presente:
+            _rechazar(
+                'No se puede registrar asistencia: esta reserva ya tiene una asistencia registrada.',
+                'asistencia_duplicada',
+                409
+            )
         _rechazar(
-            'No se puede registrar asistencia: esta reserva ya tiene una asistencia registrada.',
-            'asistencia_duplicada',
+            'No se puede registrar asistencia: esta reserva ya figura como faltó.',
+            'asistencia_ausente',
             409
+        )
+
+    if reserva.asistencia_vencida(ahora):
+        marcar_falta_reserva(reserva, hoy=ahora.date())
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+        _rechazar(
+            'No se puede registrar asistencia: pasaron más de 15 minutos desde el inicio de la clase.',
+            'asistencia_fuera_de_tiempo'
         )
 
     if reserva.tipo == 'no_abonado':

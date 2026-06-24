@@ -60,6 +60,15 @@
             </td>
             <td>
               <router-link :to="`/clases/${c.id}`" class="btn btn-outline btn-sm">🔍 Detalle</router-link>
+              <button
+                v-if="!c.cancelada"
+                class="btn btn-danger btn-sm"
+                style="margin-left:8px"
+                @click="cancelarClase(c)"
+                :disabled="cancelandoId === c.id"
+              >
+                {{ cancelandoId === c.id ? 'Cancelando...' : 'Cancelar clase' }}
+              </button>
             </td>
           </tr>
         </tbody>
@@ -118,6 +127,7 @@ const error = ref(''), mensaje = ref('')
 const formModal = ref(false)
 
 const guardando = ref(false)
+const cancelandoId = ref(null)
 const filtroActividad = ref('')
 const mostrarCanceladas = ref(false)
 const form = ref({ actividad_id: '', fecha: '', hora_inicio: '08:00', cupo_maximo: 10 })
@@ -157,6 +167,27 @@ async function guardar() {
     error.value = e.response?.data?.error || 'Error al crear clase'
   } finally {
     guardando.value = false
+  }
+}
+
+async function cancelarClase(clase) {
+  const confirmado = window.confirm(
+    `Vas a cancelar la clase de ${clase.actividad} del ${formatFecha(clase.fecha)}. ` +
+    'Se procesaran devoluciones de senia, descuentos en abonos pendientes o creditos segun corresponda. Continuar?'
+  )
+  if (!confirmado) return
+
+  cancelandoId.value = clase.id
+  error.value = ''
+  mensaje.value = ''
+  try {
+    const { data } = await api.post(`/clases/${clase.id}/cancelar`)
+    mensaje.value = data.mensaje || 'Clase cancelada correctamente'
+    await fetchClases()
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Error al cancelar clase'
+  } finally {
+    cancelandoId.value = null
   }
 }
 

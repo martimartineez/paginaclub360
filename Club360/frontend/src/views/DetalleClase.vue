@@ -19,6 +19,9 @@
         <button class="btn btn-secondary" @click="abrirEditarCupo">
           ✏️ Editar cupo
         </button>
+        <button class="btn btn-danger" @click="confirmarCancelar = true">
+          Cancelar clase
+        </button>
         </div>
     </div>
 
@@ -138,7 +141,7 @@
 
     <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && miReserva">
       <h3 style="font-size:20px;margin-bottom:16px">📲 Tu QR de asistencia</h3>
-      <div v-if="miReserva.estado === 'activa'" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+      <div v-if="miReserva.estado === 'activa' || miReserva.asistida" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
         <img
           v-if="miReserva.qr_code"
           :src="`data:image/png;base64,${miReserva.qr_code}`"
@@ -157,6 +160,7 @@
             </span>
           </div>
           <button
+            v-if="!miReserva.asistida"
             class="btn btn-danger btn-sm"
             style="margin-top:12px"
             @click="confirmarCancelarReserva = true"
@@ -349,7 +353,8 @@
         <h3>🚫 Cancelar clase</h3>
         <p style="color:var(--text-muted);margin:12px 0;font-size:14px">
           Vas a cancelar la clase de <strong>{{ clase.actividad }}</strong> del <strong>{{ formatFecha(clase.fecha) }}</strong>.
-          Esto liberará todas las reservas activas. ¿Estás seguro?
+          Se procesaran devoluciones de senia, descuentos en abonos pendientes o creditos segun corresponda.
+          Esta accion no elimina la clase. Estas seguro?
         </p>
         <div style="display:flex;gap:10px">
           <button class="btn btn-danger" @click="cancelarClase" :disabled="cancelando">

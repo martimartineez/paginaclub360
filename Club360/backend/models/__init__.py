@@ -1,10 +1,12 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask_sqlalchemy import SQLAlchemy
 import bcrypt
 
 db = SQLAlchemy()
 
 DIAS_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+ASISTENCIA_TOLERANCIA_MINUTOS = 15
 
 class Usuario(db.Model):
     __tablename__ = 'usuarios'
@@ -74,6 +76,8 @@ class Clase(db.Model):
     cupo_maximo = db.Column(db.Integer, nullable=False)
     precio_clase = db.Column(db.Numeric(10, 2), nullable=True)
     cancelada = db.Column(db.Boolean, default=False)
+    cancelada_fecha = db.Column(db.DateTime, nullable=True)
+    cancelada_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
     activa = db.Column(db.Boolean, default=True)
 
     reservas = db.relationship('Reserva', backref='clase', lazy=True)
@@ -113,6 +117,8 @@ class Clase(db.Model):
             'cupo_maximo': self.cupo_maximo,
             'cupos_disponibles': self.cupos_disponibles(),
             'cancelada': self.cancelada,
+            'cancelada_fecha': self.cancelada_fecha.isoformat() if self.cancelada_fecha else None,
+            'cancelada_por': self.cancelada_por,
             'activa': self.activa
         }
 
@@ -126,6 +132,9 @@ class Turno(db.Model):
     cupo_maximo = db.Column(db.Integer, nullable=False)
     precio_clase = db.Column(db.Numeric(10, 2), nullable=False)
     activo = db.Column(db.Boolean, default=True)
+    cancelado_fecha = db.Column(db.DateTime, nullable=True)
+    cancelado_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    motivo_cancelacion = db.Column(db.Text, nullable=True)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
 
     actividad = db.relationship('Actividad', backref='turnos')
@@ -147,6 +156,9 @@ class Turno(db.Model):
             'cupo_maximo': self.cupo_maximo,
             'precio_clase': float(self.precio_clase),
             'activo': self.activo,
+            'cancelado_fecha': self.cancelado_fecha.isoformat() if self.cancelado_fecha else None,
+            'cancelado_por': self.cancelado_por,
+            'motivo_cancelacion': self.motivo_cancelacion,
             'total_clases': len(self.clases)
         }
 
@@ -200,15 +212,40 @@ class Reserva(db.Model):
     credito_a_favor = db.Column(db.Boolean, default=False)
     inasistencias_pendientes = db.Column(db.Integer, default=0)
     qr_code = db.Column(db.Text)
+    cancelada_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    motivo_cancelacion = db.Column(db.Text, nullable=True)
+    fecha_cancelacion = db.Column(db.DateTime, nullable=True)
 
     pagos = db.relationship('Pago', backref='reserva', lazy=True)
     asistencias = db.relationship('Asistencia', backref='reserva', lazy=True)
 
+    def limite_asistencia(self):
+        if not self.clase or not self.clase.fecha or not self.clase.hora_inicio:
+            return None
+        inicio = datetime.combine(self.clase.fecha, self.clase.hora_inicio)
+        return inicio + timedelta(minutes=ASISTENCIA_TOLERANCIA_MINUTOS)
+
+    def asistencia_vencida(self, ahora=None):
+        if self.estado != 'activa':
+            return False
+        if not self.clase or self.clase.cancelada or not self.clase.activa:
+            return False
+        limite = self.limite_asistencia()
+        if not limite:
+            return False
+        return (ahora or datetime.now()) >= limite
+
+    def asistencia_estado(self, ahora=None):
+        presente = next((a for a in self.asistencias if a.presente), None)
+        if presente:
+            return 'asistida', presente
+        ausente = next((a for a in self.asistencias if not a.presente), None)
+        if ausente or self.asistencia_vencida(ahora):
+            return 'falto', ausente
+        return 'pendiente', None
+
     def to_dict(self):
-        asistencia = next(
-            (a for a in self.asistencias if a.presente),
-            None
-        )
+        estado_asistencia, asistencia = self.asistencia_estado()
         return {
             'id': self.id,
             'usuario_id': self.usuario_id,
@@ -226,7 +263,12 @@ class Reserva(db.Model):
             'cancelaciones_mes': self.cancelaciones_mes,
             'credito_a_favor': self.credito_a_favor,
             'qr_code': self.qr_code,
-            'asistida': asistencia is not None,
+            'cancelada_por': self.cancelada_por,
+            'motivo_cancelacion': self.motivo_cancelacion,
+            'fecha_cancelacion': self.fecha_cancelacion.isoformat() if self.fecha_cancelacion else None,
+            'asistida': estado_asistencia == 'asistida',
+            'falto': estado_asistencia == 'falto',
+            'estado_asistencia': estado_asistencia,
             'fecha_asistencia': asistencia.fecha.isoformat() if asistencia and asistencia.fecha else None
         }
 
@@ -305,6 +347,7 @@ class Credito(db.Model):
     estado = db.Column(db.Enum('disponible', 'usado', 'vencido', name='estado_credito_enum'), default='disponible')
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     fecha_uso = db.Column(db.DateTime)
+    motivo = db.Column(db.Text, nullable=True)
 
     reserva_origen = db.relationship('Reserva', foreign_keys=[reserva_origen_id], backref='creditos_generados')
     reserva_uso = db.relationship('Reserva', foreign_keys=[reserva_uso_id], backref='creditos_usados')
@@ -323,7 +366,44 @@ class Credito(db.Model):
             'reserva_uso_id': self.reserva_uso_id,
             'estado': self.estado,
             'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
-            'fecha_uso': self.fecha_uso.isoformat() if self.fecha_uso else None
+            'fecha_uso': self.fecha_uso.isoformat() if self.fecha_uso else None,
+            'motivo': self.motivo
+        }
+
+
+class MovimientoFinanciero(db.Model):
+    __tablename__ = 'movimientos_financieros'
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    clase_id = db.Column(db.Integer, db.ForeignKey('clases.id'), nullable=True)
+    reserva_id = db.Column(db.Integer, db.ForeignKey('reservas.id'), nullable=True)
+    abono_id = db.Column(db.Integer, db.ForeignKey('abonos.id'), nullable=True)
+    credito_id = db.Column(db.Integer, db.ForeignKey('creditos.id'), nullable=True)
+    tipo = db.Column(db.String(40), nullable=False)
+    monto = db.Column(db.Numeric(10, 2), nullable=False)
+    motivo = db.Column(db.Text, nullable=False)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+    registrado_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id], backref='movimientos_financieros')
+    clase = db.relationship('Clase', backref='movimientos_financieros')
+    reserva = db.relationship('Reserva', backref='movimientos_financieros')
+    abono = db.relationship('Abono', backref='movimientos_financieros')
+    credito = db.relationship('Credito', backref='movimientos_financieros')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'usuario_id': self.usuario_id,
+            'clase_id': self.clase_id,
+            'reserva_id': self.reserva_id,
+            'abono_id': self.abono_id,
+            'credito_id': self.credito_id,
+            'tipo': self.tipo,
+            'monto': float(self.monto) if self.monto else 0,
+            'motivo': self.motivo,
+            'fecha': self.fecha.isoformat() if self.fecha else None,
+            'registrado_por': self.registrado_por
         }
 
 

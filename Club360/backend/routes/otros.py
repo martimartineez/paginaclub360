@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Usuario, Actividad, Reserva, Suspension, Pago, Credito
-from asistencia_logic import AsistenciaRechazada, registrar_asistencia_qr
+from asistencia_logic import AsistenciaRechazada, registrar_asistencia_qr, sincronizar_faltas_reservas
 from suspensiones_logic import (
     resolver_suspension_con_pago,
     sincronizar_suspensiones_usuario,
@@ -95,6 +95,8 @@ def get_reservas_usuario(uid):
     else:
         reservas = query.all()
 
+    sincronizar_faltas_reservas(reservas, commit=True)
+
     result = []
     for r in reservas:
         d = r.to_dict()
@@ -182,6 +184,54 @@ def update_usuario(uid):
     return jsonify(target.to_dict()), 200
 
 
+@usuarios_bp.route('/<int:uid>/promover-admin', methods=['POST'])
+@jwt_required()
+@require_rol('administrador')
+def promover_empleado_admin(uid):
+    """Convierte un empleado en administrador."""
+    target = Usuario.query.get_or_404(uid)
+    if target.rol == 'administrador':
+        return jsonify({'error': 'El usuario ya es administrador'}), 400
+    if target.rol != 'empleado':
+        return jsonify({'error': 'Solo se puede convertir empleados en administradores'}), 400
+    if not target.activo:
+        return jsonify({'error': 'No se puede convertir un usuario inactivo'}), 400
+
+    target.rol = 'administrador'
+    db.session.commit()
+    return jsonify({
+        'mensaje': f'{target.nombre} {target.apellido} ahora es administrador',
+        'usuario': target.to_dict()
+    }), 200
+
+
+@usuarios_bp.route('/<int:uid>/degradar-empleado', methods=['POST'])
+@jwt_required()
+@require_rol('administrador')
+def degradar_admin_empleado(uid):
+    """Convierte otro administrador en empleado sin dejar el sistema sin admins."""
+    actor_id = int(get_jwt_identity())
+    target = Usuario.query.get_or_404(uid)
+
+    if target.id == actor_id:
+        return jsonify({'error': 'No podés cambiar tu propio rol'}), 400
+    if target.rol != 'administrador':
+        return jsonify({'error': 'Solo se puede convertir administradores en empleados'}), 400
+    if not target.activo:
+        return jsonify({'error': 'No se puede convertir un usuario inactivo'}), 400
+
+    admins_activos = Usuario.query.filter_by(rol='administrador', activo=True).count()
+    if admins_activos <= 1:
+        return jsonify({'error': 'Debe quedar al menos un administrador activo'}), 400
+
+    target.rol = 'empleado'
+    db.session.commit()
+    return jsonify({
+        'mensaje': f'{target.nombre} {target.apellido} ahora es empleado',
+        'usuario': target.to_dict()
+    }), 200
+
+
 @usuarios_bp.route('/<int:uid>/borrar', methods=['POST'])
 @jwt_required()
 @require_rol('administrador', 'empleado')
@@ -191,13 +241,18 @@ def borrar_usuario(uid):
     actor = Usuario.query.get(int(user_id))
     target = Usuario.query.get_or_404(uid)
 
-    # Empleado solo puede borrar clientes; admin puede borrar clientes y empleados
+    if not target.activo:
+        return jsonify({'error': 'El usuario ya está desactivado'}), 400
+
+    # Empleado solo puede borrar clientes; admin puede borrar clientes, empleados y otros admins
     if actor.rol == 'empleado' and target.rol != 'cliente':
         return jsonify({'error': 'Los empleados solo pueden borrar clientes'}), 403
     if target.rol == 'administrador':
-        return jsonify({'error': 'No se puede borrar un administrador'}), 403
-    if not target.activo:
-        return jsonify({'error': 'El usuario ya está desactivado'}), 400
+        if actor.id == target.id:
+            return jsonify({'error': 'No podés eliminar tu propio usuario administrador'}), 400
+        admins_activos = Usuario.query.filter_by(rol='administrador', activo=True).count()
+        if admins_activos <= 1:
+            return jsonify({'error': 'Debe quedar al menos un administrador activo'}), 400
 
     target.activo = False
     db.session.commit()
