@@ -315,16 +315,21 @@
             </div>
 
             <!-- Monto a pagar -->
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px">¿El cliente paga la seña o el total?</p>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-sm" :class="inscribirForm.monto_pagar === 'senia' ? 'btn-primary' : 'btn-outline'"
-                @click="inscribirForm.monto_pagar = 'senia'">
-                Seña (50%) — ${{ Math.round((sueltaHorarioEmpl?.precio_clase||0)*0.5).toLocaleString() }}
-              </button>
-              <button class="btn btn-sm" :class="inscribirForm.monto_pagar === 'total' ? 'btn-primary' : 'btn-outline'"
-                @click="inscribirForm.monto_pagar = 'total'">
-                Total — ${{ (sueltaHorarioEmpl?.precio_clase||0).toLocaleString() }}
-              </button>
+            <template v-if="!sueltaEnListaEspera">
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px">¿El cliente paga la seña o el total?</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-sm" :class="inscribirForm.monto_pagar === 'senia' ? 'btn-primary' : 'btn-outline'"
+                  @click="inscribirForm.monto_pagar = 'senia'">
+                  Seña (50%) — ${{ Math.round((sueltaHorarioEmpl?.precio_clase||0)*0.5).toLocaleString() }}
+                </button>
+                <button class="btn btn-sm" :class="inscribirForm.monto_pagar === 'total' ? 'btn-primary' : 'btn-outline'"
+                  @click="inscribirForm.monto_pagar = 'total'">
+                  Total — ${{ (sueltaHorarioEmpl?.precio_clase||0).toLocaleString() }}
+                </button>
+              </div>
+            </template>
+            <div v-else class="alert alert-warning" style="margin-top:8px">
+              Sin cupo disponible: el cliente se anotará en lista de espera y no se cobrará seña.
             </div>
           </div>
 
@@ -369,11 +374,11 @@
     <div class="modal-overlay" v-if="modalConfirmInscripcion" @click.self="modalConfirmInscripcion = false">
       <div class="modal card">
         <h3>
-          {{ inscribirForm.tipo === 'abonado' && detalleAbonoEmpl?.total_disponibles === 0
+          {{ inscripcionSoloListaEspera
             ? '⏳ Confirmar lista de espera'
             : '💵 Confirmar inscripción en efectivo' }}
         </h3>
-        <p v-if="inscribirForm.tipo !== 'abonado' || detalleAbonoEmpl?.total_disponibles > 0" style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
+        <p v-if="!inscripcionSoloListaEspera" style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
           El cliente <strong>{{ usuario?.nombre }} {{ usuario?.apellido }}</strong> pagará en efectivo en la sede.
         </p>
         <p v-else style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
@@ -396,7 +401,10 @@
           </div>
           <div class="confirm-row-modal">
             <span class="confirm-label">Monto a cobrar</span>
-            <span style="font-weight:700;color:var(--verde-claro);font-size:18px">
+            <span v-if="sueltaEnListaEspera" style="font-weight:700;color:var(--warning);font-size:18px">
+              $0 (lista de espera)
+            </span>
+            <span v-else style="font-weight:700;color:var(--verde-claro);font-size:18px">
               ${{ inscribirForm.monto_pagar === 'senia'
                 ? Math.round((sueltaHorarioEmpl?.precio_clase||0)*0.5).toLocaleString()
                 : (sueltaHorarioEmpl?.precio_clase||0).toLocaleString() }}
@@ -436,7 +444,7 @@
             <span style="font-weight:700;color:var(--verde-claro);font-size:18px">${{ detalleAbonoEmpl.monto_total?.toLocaleString() }}</span>
           </div>
         </template>
-        <div v-if="inscribirForm.tipo !== 'abonado' || detalleAbonoEmpl?.total_disponibles > 0" class="alert alert-warning" style="margin-top:12px">
+        <div v-if="!inscripcionSoloListaEspera" class="alert alert-warning" style="margin-top:12px">
           ⚠️ Al confirmar, el sistema registrará el cobro en efectivo automáticamente.
         </div>
         <div v-else class="alert alert-warning" style="margin-top:12px">
@@ -446,7 +454,7 @@
           <button class="btn btn-primary" @click="inscribirCliente" :disabled="inscribiendo">
             {{ inscribiendo
               ? 'Procesando...'
-              : (inscribirForm.tipo === 'abonado' && detalleAbonoEmpl?.total_disponibles === 0
+              : (inscripcionSoloListaEspera
                 ? '⏳ Anotar en lista de espera'
                 : '✓ Confirmar inscripción en efectivo') }}
           </button>
@@ -622,6 +630,15 @@ const sueltaDiaEmpl = ref(null)
 const sueltaHorarioEmpl = ref(null)
 const loadingFechasEmpl = ref(false)
 const fechasSueltaEmpl = ref([])
+const sueltaEnListaEspera = computed(() =>
+  inscribirForm.value.tipo === 'no_abonado'
+  && sueltaHorarioEmpl.value
+  && Number(sueltaHorarioEmpl.value.cupos_disponibles || 0) <= 0
+)
+const inscripcionSoloListaEspera = computed(() =>
+  sueltaEnListaEspera.value
+  || (inscribirForm.value.tipo === 'abonado' && detalleAbonoEmpl.value?.total_disponibles === 0)
+)
 
 // Días disponibles para clase suelta (empleado)
 const diasSueltaEmpl = computed(() => {
@@ -883,7 +900,7 @@ async function inscribirCliente() {
         monto_pagar: inscribirForm.value.monto_pagar
       })
       if (data.en_espera) {
-        msg.value = `${usuario.value.nombre} fue añadido a la lista de espera`
+        msg.value = `${usuario.value.nombre} fue añadido a la lista de espera. No se registró ningún cobro.`
       } else {
         msg.value = `${usuario.value.nombre} inscripto correctamente. Cobrado en efectivo.`
       }

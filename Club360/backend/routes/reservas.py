@@ -214,9 +214,20 @@ def crear_reserva_interna(data, actor_id):
     if resultado is None:
         return jsonify({'error': extra}), 400
     if resultado == 'espera':
-        return jsonify({'mensaje': 'Sin cupo. Cliente anadido a la lista de espera.', 'en_espera': True, 'alerta_admin': alerta}), 200
+        return jsonify({
+            'mensaje': 'Sin cupo. Cliente anadido a la lista de espera.',
+            'en_espera': True,
+            'alerta_admin': alerta,
+            'monto_a_pagar': 0,
+            'cobro_registrado': False
+        }), 200
     if resultado == 'espera_ya':
-        return jsonify({'mensaje': 'El cliente ya estaba en la lista de espera', 'en_espera': True}), 200
+        return jsonify({
+            'mensaje': 'El cliente ya estaba en la lista de espera',
+            'en_espera': True,
+            'monto_a_pagar': 0,
+            'cobro_registrado': False
+        }), 200
 
     pago_info = extra if isinstance(extra, dict) else {'monto_a_pagar': extra, 'credito_usado': 0}
     return jsonify({'reserva': resultado.to_dict(), **pago_info}), 201
