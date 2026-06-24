@@ -8,7 +8,7 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    required = ['nombre', 'apellido', 'dni', 'email', 'password', 'fecha_nacimiento']
+    required = ['nombre', 'apellido', 'dni', 'email', 'fecha_nacimiento']
     for field in required:
         if not data.get(field):
             return jsonify({'error': f'Campo {field} requerido'}), 400
@@ -62,7 +62,12 @@ def register():
         usuario_existente.nombre = data['nombre']
         usuario_existente.apellido = data['apellido']
         usuario_existente.rol = rol_pedido
-        usuario_existente.set_password(data['password'])
+        password_recibida = data.get('password', '').strip()
+        if password_recibida:
+            usuario_existente.set_password(password_recibida)
+        else:
+            import secrets
+            usuario_existente.set_password(secrets.token_hex(32))
         if data.get('fecha_nacimiento'):
             usuario_existente.fecha_nacimiento = date.fromisoformat(data['fecha_nacimiento'])
         db.session.commit()
@@ -81,14 +86,33 @@ def register():
         rol=rol_pedido,
         fecha_nacimiento=date.fromisoformat(data['fecha_nacimiento'])
     )
-    user.set_password(data['password'])
+    password_recibida = data.get('password', '').strip()
+    if password_recibida:
+        user.set_password(password_recibida)
+    else:
+        # Empleado/admin registra sin contraseña: asignar clave temporal inutilizable
+        import secrets
+        user.set_password(secrets.token_hex(32))
+
     db.session.add(user)
     db.session.commit()
 
-    # Solo generar token si se registra a sí mismo (sin sesión previa)
+    # Sin sesión → se registró a sí mismo → devolver token para autologin
     if not user_id:
         token = create_access_token(identity=str(user.id))
         return jsonify({'token': token, 'user': user.to_dict()}), 201
+
+    # Con sesión (empleado/admin) y sin contraseña → enviar mail de bienvenida con link para setear password
+    if not password_recibida:
+        from email_service import enviar_mail_recuperacion_password
+        from itsdangerous import URLSafeTimedSerializer
+        s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+        reset_token = s.dumps({'usuario_id': user.id}, salt='reset-password')
+        enviar_mail_recuperacion_password(user, reset_token)
+        return jsonify({
+            'user': user.to_dict(),
+            'mensaje': f'Cliente registrado correctamente. Se le envió un mail para que establezca su contraseña.'
+        }), 201
 
     return jsonify({'user': user.to_dict(), 'mensaje': f'Usuario registrado como {rol_pedido}'}), 201
 

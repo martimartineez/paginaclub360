@@ -31,7 +31,7 @@
       <p v-if="errorEmail" class="field-error">{{ errorEmail }}</p>
     </div>
 
-    <div class="input-group">
+    <div class="input-group" v-if="!ocultarPassword">
       <label>Contraseña</label>
       <input
         v-model="form.password"
@@ -55,6 +55,10 @@
 
 <script setup>
 import { ref, computed } from "vue";
+
+const props = defineProps({
+  ocultarPassword: { type: Boolean, default: false }
+});
 
 const form = ref({
   nombre: "",
@@ -145,7 +149,7 @@ const isFormValido = computed(() => {
     form.value.apellido.trim() !== "" &&
     form.value.dni.trim() !== "" &&
     form.value.email.trim() !== "" &&
-    form.value.password.trim() !== "" &&
+    (props.ocultarPassword || form.value.password.trim() !== "") &&
     form.value.fecha_nacimiento !== "" &&
     !errorNombre.value &&
     !errorDni.value &&
