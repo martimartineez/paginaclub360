@@ -91,7 +91,7 @@
           {{ rolRegistrando === 'cliente' ? '👤 Registrar Cliente' : '🧑‍💼 Registrar Empleado' }}
         </h3>
 
-        <FormRegistrar ref="formRef" />
+        <FormRegistrar ref="formRef" :ocultar-password="rolRegistrando === 'cliente' || rolRegistrando === 'empleado'" />
 
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
           El usuario podrá cambiar su contraseña desde su perfil.
@@ -178,11 +178,12 @@ async function registrarUsuario() {
   formRef.value.errorGlobal = ''
  
   try {
-    const res = await api.post('/auth/register', {
-      ...formRef.value.form,
-      rol: rolRegistrando.value
-    })
-    regMsg.value = `${rolRegistrando.value === 'cliente' ? 'Cliente' : 'Empleado'} ${res.data.reactivado ? 'reactivado' : 'registrado'} correctamente`
+    const formData = { ...formRef.value.form, rol: rolRegistrando.value }
+    // Cuando el empleado/admin registra un cliente, la contraseña no se pide:
+    // el backend la genera temporalmente y manda un mail para que el cliente la establezca
+    if (rolRegistrando.value === 'cliente' || rolRegistrando.value === 'empleado') delete formData.password
+    const res = await api.post('/auth/register', formData)
+    regMsg.value = res.data.mensaje || `${rolRegistrando.value === 'cliente' ? 'Cliente' : 'Empleado'} ${res.data.reactivado ? 'reactivado' : 'registrado'} correctamente`
     cerrarModal()
     fetchUsuarios()
     setTimeout(() => regMsg.value = '', 3000)
