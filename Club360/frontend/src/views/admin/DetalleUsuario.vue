@@ -46,7 +46,7 @@
           </button>
           <button class="accion-btn" @click="tab = 'suspensiones'; fetchSuspensiones()" v-if="usuario.suspensiones_activas?.length">
             <span class="accion-icon">🔓</span>
-            <span>Cancelar suspensión</span>
+            <span>Ver suspensiones</span>
           </button>
           <button class="accion-btn" v-if="auth.isAdmin" @click="crearSuspensionClaseSueltaPrueba" :disabled="creandoSuspensionPrueba">
             <span class="accion-icon">!</span>
