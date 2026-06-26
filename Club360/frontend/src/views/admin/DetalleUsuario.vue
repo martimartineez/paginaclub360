@@ -117,7 +117,7 @@
                     class="btn btn-danger btn-sm"
                     @click="confirmarCancelarReserva(r)"
                   >
-                    ✕ Cancelar
+                    ✕ Cancelar reserva
                   </button>
                 </div>
               </td>
@@ -1026,7 +1026,7 @@ function confirmarCancelarReserva(r) {
 }
 
 function mensajeCancelacionReserva(data) {
-  const partes = [data.mensaje || 'Reserva cancelada']
+  const partes = ['Reserva cancelada']
   if (data.info) partes.push(data.info)
   if (data.credito_generado > 0) partes.push(`Credito generado: $${data.credito_generado.toLocaleString()}`)
   if (data.descuento_aplicado > 0) partes.push(`Descuento aplicado: $${data.descuento_aplicado.toLocaleString()}`)
