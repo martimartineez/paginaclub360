@@ -14,7 +14,6 @@ const routes = [
   { path: '/mis-pagos', component: () => import('../views/MisPagos.vue'), meta: { requiresAuth: true, roles: ['cliente'] } },
   { path: '/perfil', component: () => import('../views/Perfil.vue'), meta: { requiresAuth: true } },
   // Admin
-  { path: '/admin/clases', component: () => import('../views/admin/GestionClases(eliminado).vue'), meta: { requiresAuth: true, roles: ['administrador'] } },
   { path: '/admin/turnos', component: () => import('../views/admin/GestionTurnos.vue'), meta: { requiresAuth: true, roles: ['administrador'] } },
   { path: '/admin/usuarios', component: () => import('../views/admin/GestionUsuarios.vue'), meta: { requiresAuth: true, roles: ['administrador', 'empleado'] } },
   { path: '/admin/actividades', component: () => import('../views/admin/GestionActividades.vue'), meta: { requiresAuth: true, roles: ['administrador'] } },
