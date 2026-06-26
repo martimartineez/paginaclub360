@@ -160,7 +160,7 @@
             </span>
           </div>
           <button
-            v-if="!miReserva.asistida"
+            v-if="puedeCancelarMiReserva"
             class="btn btn-danger btn-sm"
             style="margin-top:12px"
             @click="confirmarCancelarReserva = true"
@@ -365,7 +365,7 @@
       </div>
     </div>
 
-    <div class="modal-overlay" v-if="confirmarCancelarReserva" @click.self="confirmarCancelarReserva = false">
+    <div class="modal-overlay" v-if="confirmarCancelarReserva && puedeCancelarMiReserva" @click.self="confirmarCancelarReserva = false">
       <div class="modal card">
         <h3>⚠️ Cancelar reserva</h3>
         <p style="color:var(--text-muted);margin:12px 0;font-size:14px">
@@ -472,6 +472,10 @@ const creditoCupoCubreTotal = computed(() => {
 
 const listaEsperaAbonados = computed(() => listaEspera.value.filter(l => l.tipo_preferencia === 'abonado'))
 const listaEsperaNoAbonados = computed(() => listaEspera.value.filter(l => l.tipo_preferencia === 'no_abonado'))
+const puedeCancelarMiReserva = computed(() => {
+  const reserva = miReserva.value
+  return reserva?.estado === 'activa' && !reserva.asistida && !reserva.falto && reservaEsFutura(reserva)
+})
 
 // --- FUNCIONES ---
 
@@ -494,6 +498,15 @@ function mensajeCancelacion(data) {
   if (data.devolucion_senia > 0) partes.push(`Senia a devolver: $${data.devolucion_senia.toLocaleString()}`)
   if (data.advertencia) partes.push(data.advertencia)
   return partes.join(' - ')
+}
+
+function reservaEsFutura(reserva) {
+  const fecha = reserva?.clase?.fecha || clase.value?.fecha
+  const horaInicio = reserva?.clase?.hora_inicio || clase.value?.hora_inicio
+  if (!fecha || !horaInicio) return false
+  const hora = String(horaInicio)
+  const horaNormalizada = hora.length === 5 ? `${hora}:00` : hora
+  return new Date(`${fecha}T${horaNormalizada}`) > new Date()
 }
 
 function abrirEditarCupo() {
@@ -599,6 +612,10 @@ async function cancelarClase() {
 }
 
 async function cancelarReserva() {
+  if (!puedeCancelarMiReserva.value) {
+    confirmarCancelarReserva.value = false
+    return
+  }
   cancelandoReserva.value = true
   error.value = ''
   try {

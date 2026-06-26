@@ -5,7 +5,16 @@
       <p>Escaneá el QR de la clase para validar al cliente y marcarlo presente</p>
     </div>
 
-    <div class="alert alert-error" v-if="error">{{ error }}</div>
+    <div class="alert alert-error asistencia-error" v-if="error">
+      <p>{{ error }}</p>
+      <router-link
+        v-if="errorDetalleUsuarioId"
+        :to="`/usuarios/${errorDetalleUsuarioId}`"
+        class="btn btn-outline btn-sm"
+      >
+        Ver detalle
+      </router-link>
+    </div>
     <div class="alert alert-success" v-if="mensaje">{{ mensaje }}</div>
 
     <div class="grid-2">
@@ -95,6 +104,7 @@ const qrInput = ref('')
 const resultado = ref(null)
 const loading = ref(false)
 const error = ref('')
+const errorDetalleUsuarioId = ref(null)
 const mensaje = ref('')
 const scannerActivo = ref(false)
 const videoRef = ref(null)
@@ -108,6 +118,7 @@ const canvasContexto = canvasLectura.getContext('2d', { willReadFrequently: true
 
 function limpiarMensajes() {
   error.value = ''
+  errorDetalleUsuarioId.value = null
   mensaje.value = ''
   resultado.value = null
 }
@@ -218,7 +229,9 @@ async function registrar() {
     mensaje.value = data.mensaje || 'Asistencia registrada correctamente.'
     qrInput.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || 'No se pudo registrar la asistencia.'
+    const respuesta = e.response?.data || {}
+    error.value = respuesta.error || 'No se pudo registrar la asistencia.'
+    errorDetalleUsuarioId.value = respuesta.usuario_id || null
   } finally {
     loading.value = false
   }
@@ -229,6 +242,8 @@ onBeforeUnmount(detenerScanner)
 
 <style scoped>
 .scanner-title, .resultado-title { margin-bottom: 18px; font-size: 20px; }
+.asistencia-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.asistencia-error p { margin: 0; }
 .scanner-actions { display: flex; gap: 10px; margin-bottom: 14px; }
 .scanner-help { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
 .camera-box {

@@ -12,19 +12,24 @@ from suspensiones_logic import (
 
 
 class AsistenciaRechazada(ValueError):
-    def __init__(self, mensaje, codigo, status=422):
+    def __init__(self, mensaje, codigo, status=422, reserva=None):
         super().__init__(mensaje)
         self.mensaje = mensaje
         self.codigo = codigo
         self.status = status
+        self.reserva_id = reserva.id if reserva else None
+        self.usuario_id = reserva.usuario_id if reserva else None
+        self.cliente_nombre = None
+        if reserva and reserva.cliente:
+            self.cliente_nombre = f'{reserva.cliente.nombre} {reserva.cliente.apellido}'
 
 
 def _money(value):
     return round(float(value or 0), 2)
 
 
-def _rechazar(mensaje, codigo, status=422):
-    raise AsistenciaRechazada(mensaje, codigo, status)
+def _rechazar(mensaje, codigo, status=422, reserva=None):
+    raise AsistenciaRechazada(mensaje, codigo, status, reserva=reserva)
 
 
 def marcar_falta_reserva(reserva, hoy=None):
@@ -68,7 +73,8 @@ def _validar_identidad_qr(payload, reserva):
         _rechazar(
             'No se puede registrar asistencia: los datos del QR no coinciden con la reserva.',
             'qr_no_coincide',
-            400
+            400,
+            reserva=reserva
         )
 
 
@@ -76,12 +82,14 @@ def _validar_reserva_general(reserva):
     if reserva.estado == 'cancelada':
         _rechazar(
             'No se puede registrar asistencia: la reserva está cancelada.',
-            'reserva_cancelada'
+            'reserva_cancelada',
+            reserva=reserva
         )
     if not reserva.clase or reserva.clase.cancelada or not reserva.clase.activa:
         _rechazar(
             'No se puede registrar asistencia: la clase está cancelada o inactiva.',
-            'clase_inactiva'
+            'clase_inactiva',
+            reserva=reserva
         )
 
 
@@ -89,12 +97,14 @@ def _validar_clase_suelta(reserva):
     if _money(reserva.monto_pagado) < _money(reserva.monto_total):
         _rechazar(
             'No se puede registrar asistencia: la clase suelta no está pagada completamente.',
-            'clase_suelta_pago_pendiente'
+            'clase_suelta_pago_pendiente',
+            reserva=reserva
         )
     if tiene_suspension_no_abonado(reserva.usuario_id):
         _rechazar(
             'No se puede registrar asistencia: el usuario está suspendido para clases sueltas.',
-            'suspension_clase_suelta'
+            'suspension_clase_suelta',
+            reserva=reserva
         )
 
 
@@ -108,17 +118,20 @@ def _validar_abono(reserva, hoy):
     if not abono:
         _rechazar(
             'No se puede registrar asistencia: la reserva no tiene un abono válido asociado.',
-            'abono_invalido'
+            'abono_invalido',
+            reserva=reserva
         )
     if hoy.day >= 11 and _money(abono.monto_pagado) < _money(abono.monto_total):
         _rechazar(
             'No se puede registrar asistencia: el abono no está pagado y ya pasó el día 10.',
-            'abono_pago_vencido'
+            'abono_pago_vencido',
+            reserva=reserva
         )
     if tiene_suspension_abonado_para_clase(reserva.usuario_id, reserva.clase):
         _rechazar(
             'No se puede registrar asistencia: el usuario está suspendido para este turno.',
-            'suspension_turno'
+            'suspension_turno',
+            reserva=reserva
         )
 
 
@@ -149,12 +162,14 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
             _rechazar(
                 'No se puede registrar asistencia: esta reserva ya tiene una asistencia registrada.',
                 'asistencia_duplicada',
-                409
+                409,
+                reserva=reserva
             )
         _rechazar(
             'No se puede registrar asistencia: esta reserva ya figura como faltó.',
             'asistencia_ausente',
-            409
+            409,
+            reserva=reserva
         )
 
     if reserva.asistencia_vencida(ahora):
@@ -165,7 +180,8 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
             db.session.rollback()
         _rechazar(
             'No se puede registrar asistencia: pasaron más de 15 minutos desde el inicio de la clase.',
-            'asistencia_fuera_de_tiempo'
+            'asistencia_fuera_de_tiempo',
+            reserva=reserva
         )
 
     if reserva.tipo == 'no_abonado':
@@ -176,7 +192,8 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
         _rechazar(
             'No se puede registrar asistencia: el tipo de reserva no es válido.',
             'tipo_reserva_invalido',
-            400
+            400,
+            reserva=reserva
         )
 
     asistencia = Asistencia(
@@ -193,6 +210,7 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
         _rechazar(
             'No se puede registrar asistencia: esta reserva ya tiene una asistencia registrada.',
             'asistencia_duplicada',
-            409
+            409,
+            reserva=reserva
         )
     return asistencia, reserva

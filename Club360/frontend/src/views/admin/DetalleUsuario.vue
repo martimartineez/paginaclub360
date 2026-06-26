@@ -90,7 +90,7 @@
       <template v-else>
         <table>
           <thead>
-            <tr><th>Clase</th><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Seña</th><th>Acciones</th></tr>
+            <tr><th>Clase</th><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Total</th><th>Acciones</th></tr>
           </thead>
           <tbody>
             <tr v-for="r in reservas" :key="r.id">
@@ -99,22 +99,21 @@
               <td><span class="badge" :class="r.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">{{ r.tipo }}</span></td>
               <td><span class="badge" :class="estadoBadge(estadoReserva(r))">{{ estadoReserva(r) }}</span></td>
               <td>
-                <span v-if="r.tipo === 'no_abonado'" :class="r.senia_pagada ? 'text-green' : 'text-danger'">
-                  {{ r.senia_pagada ? '✓ Pagada' : '✗ Pendiente' }}
+                <span :class="reservaTotalPagado(r) ? 'text-green' : 'text-danger'">
+                  {{ reservaTotalPagado(r) ? 'Pagado' : 'No pagado' }}
                 </span>
-                <span v-else style="color:var(--text-muted)">—</span>
               </td>
               <td>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <button
-                    v-if="r.tipo === 'no_abonado' && !r.senia_pagada && r.estado === 'activa'"
+                    v-if="puedePagarReserva(r)"
                     class="btn btn-primary btn-sm"
-                    @click="abrirPagoSenia(r)"
+                    @click="abrirPagoReserva(r)"
                   >
-                    💳 Pagar seña
+                    Pagar total
                   </button>
                   <button
-                    v-if="r.estado === 'activa' && !r.falto && !r.asistida"
+                    v-if="puedeCancelarReserva(r)"
                     class="btn btn-danger btn-sm"
                     @click="confirmarCancelarReserva(r)"
                   >
@@ -555,28 +554,28 @@
       </div>
     </div>
 
-    <!-- Modal pago seña -->
-    <div class="modal-overlay" v-if="pagoSeniaModal" @click.self="pagoSeniaModal = null">
+    <!-- Modal pago total -->
+    <div class="modal-overlay" v-if="pagoReservaModal" @click.self="pagoReservaModal = null">
       <div class="modal card">
-        <h3>💳 Registrar seña</h3>
+        <h3>Registrar pago total</h3>
         <p style="color:var(--text-muted);font-size:14px;margin-bottom:16px">
-          {{ pagoSeniaModal.clase?.actividad }} — {{ formatFecha(pagoSeniaModal.clase?.fecha) }}
+          {{ pagoReservaModal.clase?.actividad }} — {{ formatFecha(pagoReservaModal.clase?.fecha) }}
         </p>
         <div class="alert alert-warning">
-          Monto de seña (50%): <strong>${{ (pagoSeniaModal.monto_total * 0.5).toLocaleString() }}</strong>
+          Saldo pendiente: <strong>${{ saldoPendienteReserva(pagoReservaModal).toLocaleString() }}</strong>
         </div>
         <div class="input-group" style="margin-top:16px">
-          <label>Método de pago</label>
-          <select v-model="metodoPagoSenia">
+          <label>Metodo de pago</label>
+          <select v-model="metodoPagoReserva">
             <option value="efectivo">Efectivo</option>
-            <option value="tarjeta_credito">Tarjeta de crédito</option>
+            <option value="tarjeta_credito">Tarjeta de credito</option>
           </select>
         </div>
         <div style="display:flex;gap:10px;margin-top:8px">
-          <button class="btn btn-primary" @click="pagarSenia" :disabled="pagandoSenia">
-            {{ pagandoSenia ? 'Procesando...' : 'Confirmar pago' }}
+          <button class="btn btn-primary" @click="pagarReserva" :disabled="pagandoReserva">
+            {{ pagandoReserva ? 'Procesando...' : 'Confirmar pago' }}
           </button>
-          <button class="btn btn-outline" @click="pagoSeniaModal = null">Cancelar</button>
+          <button class="btn btn-outline" @click="pagoReservaModal = null">Cancelar</button>
         </div>
       </div>
     </div>
@@ -671,9 +670,9 @@ const eliminando = ref(false)
 const modalCancelarReserva = ref(null)
 const cancelandoReserva = ref(false)
 
-const pagoSeniaModal = ref(null)
-const metodoPagoSenia = ref('efectivo')
-const pagandoSenia = ref(false)
+const pagoReservaModal = ref(null)
+const metodoPagoReserva = ref('efectivo')
+const pagandoReserva = ref(false)
 
 const esUsuarioActual = computed(() => Number(usuario.value?.id) === Number(auth.user?.id))
 const puedeEliminarUsuario = computed(() => {
@@ -690,6 +689,29 @@ function estadoBadge(estado) {
 function estadoReserva(reserva) {
   if (reserva.asistida) return 'asistida'
   return reserva.falto ? 'falto' : reserva.estado
+}
+function saldoPendienteReserva(reserva) {
+  if (reserva?.saldo_pendiente != null) return Number(reserva.saldo_pendiente || 0)
+  const total = Number(reserva?.monto_total || 0)
+  const pagado = Number(reserva?.monto_pagado || 0)
+  return Math.max(0, Math.round((total - pagado) * 100) / 100)
+}
+function reservaTotalPagado(reserva) {
+  if (typeof reserva?.total_pagado === 'boolean') return reserva.total_pagado
+  return saldoPendienteReserva(reserva) <= 0
+}
+function reservaEsFutura(reserva) {
+  if (!reserva?.clase?.fecha || !reserva?.clase?.hora_inicio) return false
+  const hora = String(reserva.clase.hora_inicio)
+  const horaNormalizada = hora.length === 5 ? `${hora}:00` : hora
+  return new Date(`${reserva.clase.fecha}T${horaNormalizada}`) > new Date()
+}
+function puedePagarReserva(reserva) {
+  if (typeof reserva?.puede_pagar_total === 'boolean') return reserva.puede_pagar_total
+  return reserva.estado === 'activa' && reservaEsFutura(reserva) && saldoPendienteReserva(reserva) > 0
+}
+function puedeCancelarReserva(reserva) {
+  return reserva?.estado === 'activa' && !reserva.falto && !reserva.asistida && reservaEsFutura(reserva)
 }
 function sportEmoji(nombre) {
   const map = { 'Fútbol': '⚽', 'Pádel': '🎾', 'Básquet': '🏀', 'Vóley': '🏐' }
@@ -964,6 +986,7 @@ async function ejecutarDegradarAdmin() {
 }
 
 function confirmarCancelarReserva(r) {
+  if (!puedeCancelarReserva(r)) return
   modalCancelarReserva.value = r
 }
 
@@ -978,6 +1001,10 @@ function mensajeCancelacionReserva(data) {
 }
 
 async function ejecutarCancelarReserva() {
+  if (!puedeCancelarReserva(modalCancelarReserva.value)) {
+    modalCancelarReserva.value = null
+    return
+  }
   cancelandoReserva.value = true
   err.value = ''
   try {
@@ -1038,25 +1065,26 @@ async function crearSuspensionClaseSueltaPrueba() {
   }
 }
 
-function abrirPagoSenia(r) {
-  pagoSeniaModal.value = r
-  metodoPagoSenia.value = 'efectivo'
+function abrirPagoReserva(r) {
+  pagoReservaModal.value = r
+  metodoPagoReserva.value = 'efectivo'
 }
 
-async function pagarSenia() {
-  pagandoSenia.value = true
+async function pagarReserva() {
+  pagandoReserva.value = true
   err.value = ''
+  msg.value = ''
   try {
-    await api.post(`/usuarios/${route.params.id}/pagar-senia/${pagoSeniaModal.value.id}`, {
-      metodo: metodoPagoSenia.value
+    const { data } = await api.post(`/usuarios/${route.params.id}/pagar-reserva/${pagoReservaModal.value.id}`, {
+      metodo: metodoPagoReserva.value
     })
-    msg.value = 'Seña registrada correctamente'
-    pagoSeniaModal.value = null
+    msg.value = data.mensaje || 'Reserva pagada correctamente'
+    pagoReservaModal.value = null
     await fetchReservas()
   } catch (e) {
-    err.value = e.response?.data?.error || 'Error al registrar seña'
+    err.value = e.response?.data?.error || 'Error al registrar el pago'
   } finally {
-    pagandoSenia.value = false
+    pagandoReserva.value = false
   }
 }
 

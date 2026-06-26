@@ -62,7 +62,7 @@
             {{ qrVisible === r.id ? 'Ocultar QR' : 'Ver QR' }}
           </button>
           <button
-            v-if="r.estado === 'activa' && esReservaFutura(r) && !r.asistida"
+            v-if="puedeCancelarReserva(r)"
             class="btn btn-danger btn-sm"
             @click="confirmarCancelar(r)"
           >
@@ -208,12 +208,19 @@ function abrirPago(r) {
 }
 
 function confirmarCancelar(r) {
+  if (!puedeCancelarReserva(r)) return
   cancelarModal.value = r
 }
 
 function esReservaFutura(r) {
   if (!r?.clase?.fecha || !r?.clase?.hora_inicio) return false
-  return new Date(`${r.clase.fecha}T${r.clase.hora_inicio}:00`) > new Date()
+  const hora = String(r.clase.hora_inicio)
+  const horaNormalizada = hora.length === 5 ? `${hora}:00` : hora
+  return new Date(`${r.clase.fecha}T${horaNormalizada}`) > new Date()
+}
+
+function puedeCancelarReserva(r) {
+  return r?.estado === 'activa' && !r.asistida && !r.falto && esReservaFutura(r)
 }
 
 function mensajeCancelacion(data) {
@@ -245,6 +252,10 @@ async function realizarPago() {
 }
 
 async function ejecutarCancelacion() {
+  if (!puedeCancelarReserva(cancelarModal.value)) {
+    cancelarModal.value = null
+    return
+  }
   cancelandoLoading.value = true
   try {
     const { data } = await api.post(`/reservas/${cancelarModal.value.id}/cancelar`)

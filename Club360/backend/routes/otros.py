@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Usuario, Actividad, Reserva, Suspension, Pago, Credito
@@ -98,6 +100,7 @@ def get_reservas_usuario(uid):
     sincronizar_faltas_reservas(reservas, commit=True)
 
     result = []
+    ahora = datetime.now()
     for r in reservas:
         d = r.to_dict()
         # Incluir senia pendiente
@@ -106,8 +109,22 @@ def get_reservas_usuario(uid):
             not r.senia_pagada and
             r.estado == 'activa'
         )
+        origen_pago = r.abono if r.tipo == 'abonado' and r.abono else r
+        monto_total = float(origen_pago.monto_total or 0)
+        monto_pagado = float(origen_pago.monto_pagado or 0)
+        saldo_pendiente = max(0, round(monto_total - monto_pagado, 2))
+        clase_futura = False
+        if r.clase and r.clase.fecha and r.clase.hora_inicio:
+            clase_futura = datetime.combine(r.clase.fecha, r.clase.hora_inicio) > ahora
         d['senia_pendiente'] = senia_pendiente
         d['monto_senia'] = float(r.monto_total or 0) * 0.5 if senia_pendiente else 0
+        d['saldo_pendiente'] = saldo_pendiente
+        d['total_pagado'] = saldo_pendiente <= 0
+        d['puede_pagar_total'] = (
+            r.estado == 'activa' and
+            clase_futura and
+            saldo_pendiente > 0
+        )
         result.append(d)
 
     if paginar:
@@ -154,6 +171,70 @@ def pagar_senia_empleado(uid, reserva_id):
     reserva.monto_pagado = float(reserva.monto_pagado or 0) + monto_senia
     db.session.commit()
     return jsonify({'mensaje': 'Seña registrada', 'pago': pago.to_dict(), 'reserva': reserva.to_dict()}), 200
+
+
+@usuarios_bp.route('/<int:uid>/pagar-reserva/<int:reserva_id>', methods=['POST'])
+@jwt_required()
+@require_rol('administrador', 'empleado')
+def pagar_reserva_empleado(uid, reserva_id):
+    """Empleado registra el pago total pendiente de una reserva futura."""
+    user_id = get_jwt_identity()
+    reserva = Reserva.query.get_or_404(reserva_id)
+    if reserva.usuario_id != uid:
+        return jsonify({'error': 'La reserva no pertenece a este usuario'}), 400
+    if reserva.estado != 'activa':
+        return jsonify({'error': 'Solo se pueden pagar reservas activas'}), 400
+    if not reserva.clase or not reserva.clase.fecha or not reserva.clase.hora_inicio:
+        return jsonify({'error': 'La reserva no tiene una clase valida asociada'}), 400
+    if datetime.combine(reserva.clase.fecha, reserva.clase.hora_inicio) <= datetime.now():
+        return jsonify({'error': 'Solo se pueden pagar reservas que todavia no ocurrieron'}), 400
+
+    origen_pago = reserva.abono if reserva.tipo == 'abonado' and reserva.abono else reserva
+    monto_total = float(origen_pago.monto_total or 0)
+    monto_pagado = float(origen_pago.monto_pagado or 0)
+    saldo_pendiente = max(0, round(monto_total - monto_pagado, 2))
+    if saldo_pendiente <= 0:
+        return jsonify({'error': 'La reserva ya esta pagada'}), 400
+
+    data = request.get_json(silent=True) or {}
+    metodo = data.get('metodo', 'efectivo')
+    if metodo not in ('efectivo', 'tarjeta_credito'):
+        return jsonify({'error': 'Metodo de pago invalido'}), 400
+
+    pago = Pago(
+        reserva_id=None if reserva.tipo == 'abonado' and reserva.abono else reserva_id,
+        abono_id=reserva.abono_id if reserva.tipo == 'abonado' and reserva.abono else None,
+        monto=saldo_pendiente,
+        metodo=metodo,
+        tipo_pago='mensualidad',
+        registrado_por=int(user_id)
+    )
+    db.session.add(pago)
+    if reserva.tipo == 'abonado' and reserva.abono:
+        reserva.abono.monto_pagado = monto_total
+        for reserva_abono in reserva.abono.reservas:
+            reserva_abono.monto_pagado = reserva_abono.monto_total
+            reserva_abono.senia_pagada = True
+            if reserva_abono.estado == 'suspendida':
+                reserva_abono.estado = 'activa'
+        suspensiones = Suspension.query.filter_by(
+            abono_id=reserva.abono_id,
+            tipo='abonado',
+            activa=True
+        ).all()
+        for susp in suspensiones:
+            susp.activa = False
+            susp.fecha_levantamiento = datetime.utcnow()
+    else:
+        reserva.monto_pagado = monto_total
+        reserva.senia_pagada = True
+    db.session.commit()
+    return jsonify({
+        'mensaje': 'Reserva pagada correctamente',
+        'monto_cobrado': saldo_pendiente,
+        'pago': pago.to_dict(),
+        'reserva': reserva.to_dict()
+    }), 200
 
 
 @usuarios_bp.route('/<int:uid>/inscribir', methods=['POST'])
@@ -323,11 +404,18 @@ def registrar_asistencia():
             int(get_jwt_identity())
         )
     except AsistenciaRechazada as exc:
-        return jsonify({
+        respuesta = {
             'error': exc.mensaje,
             'codigo': exc.codigo,
             'asistencia_registrada': False
-        }), exc.status
+        }
+        if exc.usuario_id:
+            respuesta.update({
+                'usuario_id': exc.usuario_id,
+                'reserva_id': exc.reserva_id,
+                'cliente_nombre': exc.cliente_nombre
+            })
+        return jsonify(respuesta), exc.status
 
     cliente = reserva.cliente
     return jsonify({

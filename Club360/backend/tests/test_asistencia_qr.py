@@ -118,8 +118,9 @@ class AsistenciaQrTestCase(unittest.TestCase):
                 contenido_qr_asistencia(reserva),
                 self.empleado.id,
                 hoy=hoy
-            )
+        )
         self.assertEqual(contexto.exception.codigo, codigo)
+        return contexto.exception
 
     def test_rechaza_qr_modificado(self):
         reserva = self.crear_reserva_suelta(1000)
@@ -127,10 +128,14 @@ class AsistenciaQrTestCase(unittest.TestCase):
         with self.assertRaises(AsistenciaRechazada) as contexto:
             registrar_asistencia_qr(qr, self.empleado.id)
         self.assertEqual(contexto.exception.codigo, 'qr_invalido')
+        self.assertIsNone(contexto.exception.usuario_id)
 
     def test_rechaza_clase_suelta_con_saldo(self):
         reserva = self.crear_reserva_suelta(500)
-        self.assert_rechazo(reserva, 'clase_suelta_pago_pendiente')
+        rechazo = self.assert_rechazo(reserva, 'clase_suelta_pago_pendiente')
+        self.assertEqual(rechazo.usuario_id, self.cliente.id)
+        self.assertEqual(rechazo.reserva_id, reserva.id)
+        self.assertEqual(rechazo.cliente_nombre, 'Ciro Cliente')
 
     def test_rechaza_suspension_de_clase_suelta(self):
         reserva = self.crear_reserva_suelta(1000)
