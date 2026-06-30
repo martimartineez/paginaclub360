@@ -325,6 +325,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../api.js'
 import FormTarjeta from '../components/FormTarjeta.vue'
+import { MENSAJE_TARJETA_VENCIDA, tarjetaVencida } from '../utils/tarjetas.js'
 
 const loading = ref(true)
 const pendientes = ref([])
@@ -437,6 +438,10 @@ function onTarjetaGuardada(t) {
 
 async function ejecutarPago() {
   if (!tarjetaSeleccionada.value) return
+  if (tarjetaVencida(tarjetaSeleccionada.value.vencimiento)) {
+    errPago.value = MENSAJE_TARJETA_VENCIDA
+    return
+  }
   procesando.value = true
   errPago.value = ''
   try {

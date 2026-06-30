@@ -5,6 +5,36 @@ from models import db, Usuario
 
 auth_bp = Blueprint('auth', __name__)
 
+
+def enviar_link_set_password(user):
+    from email_service import enviar_mail_recuperacion_password
+    from itsdangerous import URLSafeTimedSerializer
+    s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    reset_token = s.dumps({'usuario_id': user.id}, salt='reset-password')
+    enviar_mail_recuperacion_password(user, reset_token)
+
+
+def mensaje_registro_sin_password(rol):
+    etiqueta = 'Cliente' if rol == 'cliente' else 'Empleado' if rol == 'empleado' else 'Usuario'
+    return f'{etiqueta} registrado correctamente. Se le envio un mail para que establezca su contrasena.'
+
+
+def tarjeta_vencida(vencimiento, hoy=None):
+    if not vencimiento or len(vencimiento) != 5 or vencimiento[2] != '/':
+        return True
+    try:
+        mes = int(vencimiento[:2])
+        anio = int(vencimiento[3:])
+    except ValueError:
+        return True
+    if mes < 1 or mes > 12:
+        return True
+
+    hoy = hoy or date.today()
+    anio_completo = 2000 + anio
+    return anio_completo < hoy.year or (anio_completo == hoy.year and mes < hoy.month)
+
+
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -56,11 +86,16 @@ def register():
         return jsonify({'error': 'El DNI ya está registrado'}), 409
 
     # Si existe pero está desactivado → reactivar
+    if por_email and por_dni and por_email.id != por_dni.id:
+        return jsonify({'error': 'El email y el DNI pertenecen a cuentas distintas'}), 409
+
     usuario_existente = por_email or por_dni
     if usuario_existente and not usuario_existente.activo:
         usuario_existente.activo = True
         usuario_existente.nombre = data['nombre']
         usuario_existente.apellido = data['apellido']
+        usuario_existente.dni = data['dni']
+        usuario_existente.email = data['email']
         usuario_existente.rol = rol_pedido
         password_recibida = data.get('password', '').strip()
         if password_recibida:
@@ -74,9 +109,11 @@ def register():
         user = usuario_existente
         if not user_id:
             token = create_access_token(identity=str(user.id))
-            return jsonify({'token': token, 'user': user.to_dict(), 'reactivado': True}), 200
-        return jsonify({'user': user.to_dict(), 'reactivado': True,
-                        'mensaje': f'Usuario reactivado como {rol_pedido}'}), 200
+            return jsonify({'token': token, 'user': user.to_dict()}), 201
+        if not password_recibida:
+            enviar_link_set_password(user)
+            return jsonify({'user': user.to_dict(), 'mensaje': mensaje_registro_sin_password(rol_pedido)}), 201
+        return jsonify({'user': user.to_dict(), 'mensaje': f'Usuario registrado como {rol_pedido}'}), 201
 
     user = Usuario(
         nombre=data['nombre'],
@@ -104,15 +141,8 @@ def register():
 
     # Con sesión (empleado/admin) y sin contraseña → enviar mail de bienvenida con link para setear password
     if not password_recibida:
-        from email_service import enviar_mail_recuperacion_password
-        from itsdangerous import URLSafeTimedSerializer
-        s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
-        reset_token = s.dumps({'usuario_id': user.id}, salt='reset-password')
-        enviar_mail_recuperacion_password(user, reset_token)
-        return jsonify({
-            'user': user.to_dict(),
-            'mensaje': f'Cliente registrado correctamente. Se le envió un mail para que establezca su contraseña.'
-        }), 201
+        enviar_link_set_password(user)
+        return jsonify({'user': user.to_dict(), 'mensaje': mensaje_registro_sin_password(rol_pedido)}), 201
 
     return jsonify({'user': user.to_dict(), 'mensaje': f'Usuario registrado como {rol_pedido}'}), 201
 
@@ -134,9 +164,27 @@ def login():
 def me():
     user_id = get_jwt_identity()
     user = Usuario.query.get(int(user_id))
-    if not user:
+    if not user or not user.activo:
         return jsonify({'error': 'Usuario no encontrado'}), 404
     return jsonify(user.to_dict()), 200
+
+
+@auth_bp.route('/me', methods=['DELETE'])
+@jwt_required()
+def eliminar_mi_cuenta():
+    user_id = get_jwt_identity()
+    user = Usuario.query.get(int(user_id))
+    if not user or not user.activo:
+        return jsonify({'error': 'Usuario no encontrado'}), 404
+
+    if user.rol == 'administrador':
+        admins_activos = Usuario.query.filter_by(rol='administrador', activo=True).count()
+        if admins_activos <= 1:
+            return jsonify({'error': 'Debe quedar al menos un administrador activo'}), 400
+
+    user.activo = False
+    db.session.commit()
+    return jsonify({'mensaje': 'Cuenta eliminada correctamente'}), 200
 
 
 @auth_bp.route('/change-password', methods=['PUT'])
@@ -145,6 +193,8 @@ def change_password():
     user_id = get_jwt_identity()
     user = Usuario.query.get(int(user_id))
     data = request.get_json()
+    if not user or not user.activo:
+        return jsonify({'error': 'Usuario no encontrado'}), 404
     if not user.check_password(data.get('password_actual', '')):
         return jsonify({'error': 'Contraseña actual incorrecta'}), 400
     nueva = data.get('nueva_password', '')
@@ -178,6 +228,8 @@ def agregar_tarjeta():
     venc = data.get('vencimiento', '')
     if len(venc) != 5 or venc[2] != '/':
         return jsonify({'error': 'Vencimiento inválido (MM/AA)'}), 400
+    if tarjeta_vencida(venc):
+        return jsonify({'error': 'La tarjeta esta vencida'}), 400
 
     tarjeta = TarjetaCredito(
         usuario_id=int(user_id),

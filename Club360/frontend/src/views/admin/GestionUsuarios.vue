@@ -183,7 +183,7 @@ async function registrarUsuario() {
     // el backend la genera temporalmente y manda un mail para que el cliente la establezca
     if (rolRegistrando.value === 'cliente' || rolRegistrando.value === 'empleado') delete formData.password
     const res = await api.post('/auth/register', formData)
-    regMsg.value = res.data.mensaje || `${rolRegistrando.value === 'cliente' ? 'Cliente' : 'Empleado'} ${res.data.reactivado ? 'reactivado' : 'registrado'} correctamente`
+    regMsg.value = res.data.mensaje || `${rolRegistrando.value === 'cliente' ? 'Cliente' : 'Empleado'} registrado correctamente`
     cerrarModal()
     fetchUsuarios()
     setTimeout(() => regMsg.value = '', 3000)

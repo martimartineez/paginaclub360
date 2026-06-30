@@ -112,13 +112,14 @@ class AsistenciaQrTestCase(unittest.TestCase):
         db.session.commit()
         return reserva
 
-    def assert_rechazo(self, reserva, codigo, hoy=date(2026, 6, 22)):
+    def assert_rechazo(self, reserva, codigo, hoy=date(2026, 6, 22), ahora=datetime(2026, 6, 22, 18, 0)):
         with self.assertRaises(AsistenciaRechazada) as contexto:
             registrar_asistencia_qr(
                 contenido_qr_asistencia(reserva),
                 self.empleado.id,
-                hoy=hoy
-        )
+                hoy=hoy,
+                ahora=ahora
+            )
         self.assertEqual(contexto.exception.codigo, codigo)
         return contexto.exception
 
@@ -170,7 +171,8 @@ class AsistenciaQrTestCase(unittest.TestCase):
             asistencia, _ = registrar_asistencia_qr(
                 contenido_qr_asistencia(reserva),
                 self.empleado.id,
-                hoy=date(2026, 6, 10)
+                hoy=date(2026, 6, 10),
+                ahora=datetime(2026, 6, 22, 17, 30)
             )
         self.assertTrue(asistencia.presente)
 
@@ -179,7 +181,8 @@ class AsistenciaQrTestCase(unittest.TestCase):
         asistencia, _ = registrar_asistencia_qr(
             contenido_qr_asistencia(reserva),
             self.empleado.id,
-            hoy=date(2026, 6, 22)
+            hoy=date(2026, 6, 22),
+            ahora=datetime(2026, 6, 22, 17, 30)
         )
         self.assertTrue(asistencia.presente)
         self.assertTrue(reserva.to_dict()['asistida'])
@@ -210,6 +213,16 @@ class AsistenciaQrTestCase(unittest.TestCase):
         self.assertFalse(falta.presente)
         self.assertTrue(reserva.to_dict()['falto'])
         self.assertEqual(reserva.to_dict()['estado_asistencia'], 'falto')
+
+    def test_rechaza_asistencia_mas_de_30_minutos_antes(self):
+        reserva = self.crear_reserva_suelta(1000)
+        rechazo = self.assert_rechazo(
+            reserva,
+            'asistencia_demasiado_temprano',
+            ahora=datetime(2026, 6, 22, 17, 29)
+        )
+        self.assertEqual(rechazo.reserva_id, reserva.id)
+        self.assertEqual(Asistencia.query.count(), 0)
 
 
 if __name__ == '__main__':

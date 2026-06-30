@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 from flask import Flask
 
 from creditos_logic import cancelar_clase_por_admin, cancelar_reserva_con_creditos, cancelar_turno_por_admin
-from routes.turnos import generar_clases_para_turno
+from routes.turnos import generar_clases_para_turno, reactivar_turno_cancelado
 from models import (
     Abono,
     Actividad,
@@ -294,6 +294,7 @@ class CancelacionClaseAdminTestCase(unittest.TestCase):
         self.assertFalse(turno.activo)
         self.assertTrue(clase_suelta.cancelada)
         self.assertTrue(clase_abono.cancelada)
+        self.assertEqual(turno.to_dict()['total_clases'], 0)
         self.assertEqual(reserva_suelta.estado, 'cancelada')
         self.assertEqual(reserva_abono.estado, 'cancelada')
         self.assertEqual(resultado['clases_canceladas'], 2)
@@ -375,6 +376,49 @@ class CancelacionClaseAdminTestCase(unittest.TestCase):
         self.assertTrue(clase_cancelada.cancelada)
         self.assertEqual(len(clases_fecha), 2)
         self.assertEqual(len(nuevas_vigentes), 1)
+
+    def test_reactivar_turno_no_reusa_inscripciones_ni_lista_espera_viejas(self):
+        turno, clase_cancelada, _ = self.crear_turno_con_clases()
+        reserva = Reserva(
+            usuario_id=self.cliente.id,
+            clase_id=clase_cancelada.id,
+            tipo='no_abonado',
+            estado='activa',
+            mes=7,
+            anio=2026,
+            monto_total=1000,
+            monto_pagado=500,
+            senia_pagada=True
+        )
+        espera = ListaEspera(
+            usuario_id=self.cliente.id,
+            clase_id=clase_cancelada.id,
+            tipo_preferencia='no_abonado',
+            estado='esperando',
+            mes=7,
+            anio=2026
+        )
+        db.session.add_all([reserva, espera])
+        db.session.commit()
+
+        cancelar_turno_por_admin(turno.id, self.admin.id, desde=date(2026, 7, 17))
+        db.session.commit()
+
+        resultado = reactivar_turno_cancelado(
+            turno,
+            desde=date(2026, 7, 17),
+            hasta=date(2026, 7, 17)
+        )
+
+        clases_fecha = Clase.query.filter_by(turno_id=turno.id, fecha=date(2026, 7, 17)).all()
+        clase_nueva = next(c for c in clases_fecha if c.activa and not c.cancelada)
+
+        self.assertTrue(turno.activo)
+        self.assertEqual(resultado['clases_generadas'], 1)
+        self.assertEqual(reserva.clase_id, clase_cancelada.id)
+        self.assertEqual(espera.clase_id, clase_cancelada.id)
+        self.assertEqual(Reserva.query.filter_by(clase_id=clase_nueva.id).count(), 0)
+        self.assertEqual(ListaEspera.query.filter_by(clase_id=clase_nueva.id).count(), 0)
 
 
 if __name__ == '__main__':

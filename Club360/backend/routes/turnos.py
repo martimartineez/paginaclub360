@@ -70,6 +70,34 @@ def generar_clases_para_turno(turno, desde=None, hasta=None):
     return clases_generadas, clases_existentes
 
 
+def reactivar_turno_cancelado(turno, desde=None, hasta=None):
+    if turno.activo:
+        raise ValueError('El turno ya esta activo')
+
+    activo_existente = Turno.query.filter(
+        Turno.id != turno.id,
+        Turno.actividad_id == turno.actividad_id,
+        Turno.dia_semana == turno.dia_semana,
+        Turno.hora_inicio == turno.hora_inicio,
+        Turno.activo.is_(True)
+    ).first()
+    if activo_existente:
+        raise ValueError('Ya existe un turno activo con esa actividad, dia y horario')
+
+    turno.activo = True
+    turno.cancelado_fecha = None
+    turno.cancelado_por = None
+    turno.motivo_cancelacion = None
+    db.session.commit()
+    generadas, existentes = generar_clases_para_turno(turno, desde=desde, hasta=hasta)
+    return {
+        'turno': turno.to_dict(),
+        'clases_generadas': generadas,
+        'clases_existentes': existentes,
+        'mensaje': f'Turno reactivado. {generadas} clase(s) nueva(s) generada(s).'
+    }
+
+
 @turnos_bp.route('/', methods=['GET'])
 @jwt_required()
 @require_rol('administrador', 'empleado')
@@ -241,3 +269,19 @@ def desactivar_turno(turno_id):
 @require_rol('administrador')
 def cancelar_turno(turno_id):
     return desactivar_turno(turno_id)
+
+
+@turnos_bp.route('/<int:turno_id>/reactivar', methods=['POST'])
+@jwt_required()
+@require_rol('administrador')
+def reactivar_turno(turno_id):
+    turno = Turno.query.get_or_404(turno_id)
+    try:
+        resultado = reactivar_turno_cancelado(turno)
+        return jsonify(resultado), 200
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'No se pudo reactivar el turno.'}), 500

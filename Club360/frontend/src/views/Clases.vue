@@ -542,6 +542,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth.js'
 import FormTarjeta from '../components/FormTarjeta.vue'
 import api from '../api.js'
+import { MENSAJE_TARJETA_VENCIDA, tarjetaVencida } from '../utils/tarjetas.js'
 
 const auth = useAuthStore()
 
@@ -761,8 +762,14 @@ function onTarjetaGuardada(t) {
 }
 
 async function confirmarPago() {
-  pagando.value = true
   errorPago.value = ''
+  const pagaConTarjeta = montoFinal.value > 0 && tarjetaSeleccionada.value
+  if (pagaConTarjeta && tarjetaVencida(tarjetaSeleccionada.value.vencimiento)) {
+    errorPago.value = MENSAJE_TARJETA_VENCIDA
+    return
+  }
+
+  pagando.value = true
   try {
     if (seleccion.value.tipo === 'abonado') {
       const clasesIds = detalleAbono.value.clases

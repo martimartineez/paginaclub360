@@ -1,8 +1,8 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy.exc import IntegrityError
 
-from models import Abono, Asistencia, Reserva, db
+from models import ASISTENCIA_ANTICIPACION_MINUTOS, Abono, Asistencia, Reserva, db
 from qr_asistencia import QrAsistenciaInvalido, leer_token_asistencia
 from suspensiones_logic import (
     sincronizar_suspensiones_usuario,
@@ -93,6 +93,17 @@ def _validar_reserva_general(reserva):
         )
 
 
+def _validar_inicio_ventana_asistencia(reserva, ahora):
+    inicio = datetime.combine(reserva.clase.fecha, reserva.clase.hora_inicio)
+    apertura = inicio - timedelta(minutes=ASISTENCIA_ANTICIPACION_MINUTOS)
+    if ahora < apertura:
+        _rechazar(
+            'No se puede registrar asistencia: la asistencia se habilita 30 minutos antes del inicio de la clase.',
+            'asistencia_demasiado_temprano',
+            reserva=reserva
+        )
+
+
 def _validar_clase_suelta(reserva):
     if _money(reserva.monto_pagado) < _money(reserva.monto_total):
         _rechazar(
@@ -155,6 +166,7 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
     _validar_identidad_qr(payload, reserva)
     sincronizar_suspensiones_usuario(reserva.usuario_id, commit=True)
     _validar_reserva_general(reserva)
+    _validar_inicio_ventana_asistencia(reserva, ahora)
 
     asistencia_existente = Asistencia.query.filter_by(reserva_id=reserva.id).first()
     if asistencia_existente:

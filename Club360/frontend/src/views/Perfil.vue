@@ -88,6 +88,14 @@
             />
           </div>
         </div>
+
+        <div class="card danger-zone">
+          <h3>Cuenta</h3>
+          <p>Si eliminás tu cuenta, se borrarán todos tus datos y no podrás recuperarla.</p>
+          <button class="btn btn-danger" @click="modalEliminarCuenta = true">
+            Eliminar mi cuenta
+          </button>
+        </div>
       </div>
 
       <!-- Info de cuenta -->
@@ -159,16 +167,36 @@
         </div>
       </div>
     </div>
+
+    <div class="modal-overlay" v-if="modalEliminarCuenta" @click.self="cerrarModalEliminarCuenta">
+      <div class="modal card">
+        <h3>Eliminar mi cuenta</h3>
+        <div class="alert alert-error" v-if="eliminarCuentaErr">{{ eliminarCuentaErr }}</div>
+        <p class="modal-copy">
+          Tu cuenta quedará eliminada.
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-danger" @click="eliminarMiCuenta" :disabled="eliminandoCuenta">
+            {{ eliminandoCuenta ? 'Eliminando...' : 'Eliminar cuenta' }}
+          </button>
+          <button class="btn btn-outline" @click="cerrarModalEliminarCuenta" :disabled="eliminandoCuenta">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import FormTarjeta from '../components/FormTarjeta.vue'
 import api from '../api.js'
 
 const auth = useAuthStore()
+const router = useRouter()
 const form = ref({ nombre: '', apellido: '', email: '' })
 const msg = ref(''), err = ref('')
 const guardando = ref(false)
@@ -181,6 +209,9 @@ const verActual = ref(false), verNueva = ref(false), verConfirmar = ref(false)
 
 const tarjetas = ref([])
 const mostrarFormTarjeta = ref(false)
+const modalEliminarCuenta = ref(false)
+const eliminandoCuenta = ref(false)
+const eliminarCuentaErr = ref('')
 
 const errorNombre = computed(() => {
   if (!form.value.nombre) return ''
@@ -306,6 +337,26 @@ async function eliminarTarjeta(id) {
   await api.delete(`/auth/tarjetas/${id}`)
   tarjetas.value = tarjetas.value.filter(t => t.id !== id)
 }
+
+function cerrarModalEliminarCuenta() {
+  if (eliminandoCuenta.value) return
+  modalEliminarCuenta.value = false
+  eliminarCuentaErr.value = ''
+}
+
+async function eliminarMiCuenta() {
+  eliminandoCuenta.value = true
+  eliminarCuentaErr.value = ''
+  try {
+    await api.delete('/auth/me')
+    auth.logout()
+    router.push('/login')
+  } catch (e) {
+    eliminarCuentaErr.value = e.response?.data?.error || 'No se pudo eliminar la cuenta'
+  } finally {
+    eliminandoCuenta.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -321,10 +372,14 @@ async function eliminarTarjeta(id) {
 /* Tarjetas */
 .empty-tarjetas { padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px; background: var(--dark-3); border-radius: 8px; }
 .tarjeta-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--dark-3); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); }
+.danger-zone { margin-top: 20px; border-color: rgba(218, 54, 51, 0.45); }
+.danger-zone p { color: var(--text-muted); font-size: 14px; margin-bottom: 16px; }
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { max-width: 440px; width: 100%; }
 .modal h3 { font-size: 22px; margin-bottom: 20px; }
+.modal-copy { color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-bottom: 18px; }
+.modal-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .input-eye { position: relative; }
 .input-eye input { width: 100%; padding-right: 40px; }
 .eye-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; padding: 0; }

@@ -7,6 +7,7 @@ db = SQLAlchemy()
 DIAS_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
 ASISTENCIA_TOLERANCIA_MINUTOS = 15
+ASISTENCIA_ANTICIPACION_MINUTOS = 30
 
 class Usuario(db.Model):
     __tablename__ = 'usuarios'
@@ -159,7 +160,7 @@ class Turno(db.Model):
             'cancelado_fecha': self.cancelado_fecha.isoformat() if self.cancelado_fecha else None,
             'cancelado_por': self.cancelado_por,
             'motivo_cancelacion': self.motivo_cancelacion,
-            'total_clases': len(self.clases)
+            'total_clases': sum(1 for clase in self.clases if clase.activa and not clase.cancelada)
         }
 
 

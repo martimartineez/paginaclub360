@@ -395,6 +395,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import api from '../api.js'
 import FormTarjeta from '../components/FormTarjeta.vue'
+import { MENSAJE_TARJETA_VENCIDA, tarjetaVencida } from '../utils/tarjetas.js'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -708,8 +709,13 @@ async function irAPagarCupo() {
 }
 
 async function aceptarCupoLista() {
-  reservandoLoading.value = true
   error.value = ''
+  if (montoCupoAPagar.value > 0 && tarjetaSeleccionadaCupo.value && tarjetaVencida(tarjetaSeleccionadaCupo.value.vencimiento)) {
+    error.value = MENSAJE_TARJETA_VENCIDA
+    return
+  }
+
+  reservandoLoading.value = true
   try {
     const tipo = tipoPreferenciaLista.value || 'no_abonado'
     const usarCredito = montoPagoCupo.value === 'credito'

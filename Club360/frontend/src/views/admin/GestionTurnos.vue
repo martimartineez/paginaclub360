@@ -75,6 +75,46 @@
       </p>
     </div>
 
+    <div class="card historial-card">
+      <div class="historial-header">
+        <div>
+          <h3>Historial de cancelaciones</h3>
+          <p>Turnos cancelados. Al reactivar se generan clases nuevas desde cero.</p>
+        </div>
+      </div>
+
+      <div v-if="historialCancelados.length === 0" class="empty-historial">
+        No hay turnos cancelados.
+      </div>
+
+      <div v-else style="overflow:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Actividad</th><th>Dia</th><th>Hora</th><th>Cancelado</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="t in historialCancelados" :key="`hist-${t.id}`">
+              <td>{{ sportEmoji(t.actividad) }} {{ t.actividad }}</td>
+              <td>{{ t.dia_semana_str }}</td>
+              <td>{{ t.hora_inicio }} hs</td>
+              <td>{{ formatFechaHora(t.cancelado_fecha) }}</td>
+              <td>
+                <button
+                  class="btn btn-primary btn-sm"
+                  @click="reactivarTurno(t)"
+                  :disabled="reactivandoId === t.id"
+                >
+                  {{ reactivandoId === t.id ? 'Reactivando...' : 'Reactivar' }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="modal-overlay" v-if="formModal" @click.self="formModal = false">
       <div class="modal card">
         <h3>Nuevo Turno</h3>
@@ -180,6 +220,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import api from '../../api.js'
 
 const turnos = ref([])
+const historialCancelados = ref([])
 const actividades = ref([])
 const loading = ref(false)
 const error = ref(''), mensaje = ref('')
@@ -190,6 +231,7 @@ const editForm = ref({ cupo_maximo: 10, precio_clase: 0 })
 const guardando = ref(false)
 const desactivarModal = ref(null)
 const desactivando = ref(false)
+const reactivandoId = ref(null)
 const filtroActividad = ref('')
 const filtroActivo = ref('true')
 
@@ -338,16 +380,43 @@ async function cancelarTurno() {
     desactivando.value = false
   }
 }
+
+async function reactivarTurno(turno) {
+  reactivandoId.value = turno.id
+  error.value = ''
+  mensaje.value = ''
+  try {
+    const { data } = await api.post(`/turnos/${turno.id}/reactivar`)
+    mensaje.value = data.mensaje || 'Turno reactivado correctamente'
+    await fetchTurnos()
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Error al reactivar turno'
+  } finally {
+    reactivandoId.value = null
+  }
+}
+
 async function fetchTurnos() {
   loading.value = true
   try {
     const params = { activos: filtroActivo.value }
     if (filtroActividad.value) params.actividad_id = filtroActividad.value
-    const { data } = await api.get('/turnos/', { params })
-    turnos.value = data
+    const activosParams = { ...params, activos: 'true' }
+    const historialParams = { ...params, activos: 'false' }
+    const [activosRes, historialRes] = await Promise.all([
+      api.get('/turnos/', { params: activosParams }),
+      api.get('/turnos/', { params: historialParams })
+    ])
+    turnos.value = activosRes.data
+    historialCancelados.value = historialRes.data.filter(t => !t.activo)
   } finally {
     loading.value = false
   }
+}
+
+function formatFechaHora(valor) {
+  if (!valor) return '-'
+  return new Date(valor).toLocaleString()
 }
 
 onMounted(async () => {
@@ -360,6 +429,11 @@ onMounted(async () => {
 <style scoped>
 .loading-text { text-align:center;padding:40px;color:var(--text-muted); }
 .row-inactivo td { opacity:0.5; }
+.historial-card { margin-top:24px; }
+.historial-header { display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px; }
+.historial-header h3 { font-size:20px;margin-bottom:4px; }
+.historial-header p { color:var(--text-muted);font-size:13px; }
+.empty-historial { padding:18px;text-align:center;color:var(--text-muted);background:var(--dark-3);border-radius:8px; }
 .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:200; }
 .modal { max-width:520px;width:100%; }
 .modal h3 { font-size:22px;margin-bottom:16px; }
