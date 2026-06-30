@@ -119,7 +119,7 @@ def _validar_clase_suelta(reserva):
         )
 
 
-def _validar_abono(reserva, hoy):
+def z_validar_abono(reserva, hoy):
     abono = reserva.abono
     if not abono:
         abono = Abono.query.filter_by(
@@ -132,16 +132,18 @@ def _validar_abono(reserva, hoy):
             'abono_invalido',
             reserva=reserva
         )
-    if hoy.day >= 11 and _money(abono.monto_pagado) < _money(abono.monto_total):
-        _rechazar(
-            'No se puede registrar asistencia: el abono no está pagado y ya pasó el día 10.',
-            'abono_pago_vencido',
-            reserva=reserva
-        )
+
     if tiene_suspension_abonado_para_clase(reserva.usuario_id, reserva.clase):
         _rechazar(
             'No se puede registrar asistencia: el usuario está suspendido para este turno.',
             'suspension_turno',
+            reserva=reserva
+        )
+   
+    if hoy.day >= 11 and _money(abono.monto_pagado) < _money(abono.monto_total):
+        _rechazar(
+            'No se puede registrar asistencia: el abono no está pagado y ya pasó el día 10.',
+            'abono_pago_vencido',
             reserva=reserva
         )
 
@@ -169,6 +171,15 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
     _validar_inicio_ventana_asistencia(reserva, ahora)
 
     asistencia_existente = Asistencia.query.filter_by(reserva_id=reserva.id).first()
+
+
+    if reserva.asistencia_vencida(ahora):
+        _rechazar(
+            'No se puede registrar asistencia: La clase ya finalizo',
+            'asistencia_fuera_de_tiempo',
+            reserva=reserva
+        )
+
     if asistencia_existente:
         if asistencia_existente.presente:
             _rechazar(
@@ -183,19 +194,7 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
             409,
             reserva=reserva
         )
-
-    if reserva.asistencia_vencida(ahora):
-        marcar_falta_reserva(reserva, hoy=ahora.date())
-        try:
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-        _rechazar(
-            'No se puede registrar asistencia: pasaron más de 15 minutos desde el inicio de la clase.',
-            'asistencia_fuera_de_tiempo',
-            reserva=reserva
-        )
-
+        
     if reserva.tipo == 'no_abonado':
         _validar_clase_suelta(reserva)
     elif reserva.tipo == 'abonado':
