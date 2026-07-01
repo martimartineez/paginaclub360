@@ -210,7 +210,7 @@ def enviar_mail_recuperacion_password(usuario, token):
     return enviar_mail(usuario.email, asunto, cuerpo)
 
 
-def enviar_aviso_clase_cancelada(reserva, devolucion_senia=0, credito_generado=0, descuento_abono=0):
+def enviar_aviso_clase_cancelada(reserva, devolucion_senia=0, credito_generado=0, descuento_abono=0, credito_devuelto=0):
     """Avisa al cliente que el administrador cancelo la clase en la que
     tenia una reserva activa, e informa que paso con el dinero involucrado
     (devolucion de senia, credito generado o descuento al abono)."""
@@ -228,6 +228,8 @@ def enviar_aviso_clase_cancelada(reserva, devolucion_senia=0, credito_generado=0
     detalle_dinero = ''
     if devolucion_senia > 0:
         detalle_dinero = f'Se te devolvera lo abonado por esta clase (${devolucion_senia:,.0f}).\n'
+    elif credito_devuelto > 0:
+        detalle_dinero = f'El credito que usaste para esta reserva vuelve a estar disponible (${credito_devuelto:,.0f}).\n'
     elif credito_generado > 0:
         detalle_dinero = f'Se genero un credito a tu favor por ${credito_generado:,.0f} para usar en otra clase de la misma actividad.\n'
     elif descuento_abono > 0:

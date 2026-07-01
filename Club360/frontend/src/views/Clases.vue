@@ -219,7 +219,7 @@
           <div class="confirm-row"><span class="confirm-label">Deporte</span><span class="confirm-value">{{ sportEmoji(seleccion.actividad?.nombre) }} {{ seleccion.actividad?.nombre }}</span></div>
           <div class="confirm-row"><span class="confirm-label">Fecha</span><span class="confirm-value">{{ seleccion.fecha?.dia_semana }}, {{ formatFecha(seleccion.fecha?.fecha) }}</span></div>
           <div class="confirm-row"><span class="confirm-label">Horario</span><span class="confirm-value">{{ seleccion.clase?.hora_inicio }} hs</span></div>
-          <div class="confirm-row"><span class="confirm-label">Precio total</span><span class="confirm-value">${{ seleccion.actividad?.precio_clase?.toLocaleString() }}</span></div>
+          <div class="confirm-row"><span class="confirm-label">Precio total</span><span class="confirm-value">${{ precioClaseSuelta?.toLocaleString() }}</span></div>
         </div>
 
         <!-- Elegir monto a pagar -->
@@ -228,14 +228,14 @@
           <div class="pago-opcion" :class="{ selected: montoPago === 'senia' }" @click="montoPago = 'senia'">
             <div class="pago-radio">{{ montoPago === 'senia' ? '●' : '○' }}</div>
             <div>
-              <p style="font-weight:600">Seña (50%) — ${{ Math.round(seleccion.actividad?.precio_clase * 0.5).toLocaleString() }}</p>
+              <p style="font-weight:600">Seña (50%) — ${{ Math.round(precioClaseSuelta * 0.5).toLocaleString() }}</p>
               <p style="font-size:12px;color:var(--text-muted)">El resto lo abonás al llegar a la clase</p>
             </div>
           </div>
           <div class="pago-opcion" :class="{ selected: montoPago === 'total' }" @click="montoPago = 'total'">
             <div class="pago-radio">{{ montoPago === 'total' ? '●' : '○' }}</div>
             <div>
-              <p style="font-weight:600">Total — ${{ seleccion.actividad?.precio_clase?.toLocaleString() }}</p>
+              <p style="font-weight:600">Total — ${{ precioClaseSuelta?.toLocaleString() }}</p>
               <p style="font-size:12px;color:var(--text-muted)">Pagás todo ahora, no debés nada al llegar</p>
             </div>
           </div>
@@ -568,11 +568,13 @@ const filtros = ref({ actividad_id: '', desde: '', hasta: '' })
 
 const stepLabels = ['Deporte', 'Tipo', 'Fecha/Hora', 'Confirmar', 'Pagar']
 
+const precioClaseSuelta = computed(() => seleccion.value.clase?.precio_clase ?? seleccion.value.actividad?.precio_clase ?? 0)
+
 const montoFinal = computed(() => {
   if (seleccion.value.tipo === 'abonado') {
     return detalleAbono.value?.monto_total || 0
   }
-  const precio = seleccion.value.actividad?.precio_clase || 0
+  const precio = precioClaseSuelta.value
   if (montoPago.value === 'credito') return 0
   return montoPago.value === 'senia' ? Math.round(precio * 0.5) : precio
 })
@@ -712,7 +714,12 @@ function elegirFecha(f) {
 }
 
 function elegirHorario(h) {
-  seleccion.value.clase = { id: h.clase_id, hora_inicio: h.hora_inicio, cupos_disponibles: h.cupos_disponibles }
+  seleccion.value.clase = {
+    id: h.clase_id,
+    hora_inicio: h.hora_inicio,
+    cupos_disponibles: h.cupos_disponibles,
+    precio_clase: h.precio_clase
+  }
 }
 
 function elegirOpcionAbono(op) {

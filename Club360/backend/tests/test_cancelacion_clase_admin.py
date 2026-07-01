@@ -116,6 +116,36 @@ class CancelacionClaseAdminTestCase(unittest.TestCase):
         self.assertEqual(movimiento.tipo, 'devolucion_senia')
         self.assertEqual(float(movimiento.monto), 500)
 
+    def test_devuelve_credito_usado_en_clase_suelta_cancelada_por_admin(self):
+        reserva = self.reserva_suelta(1000)
+        credito = Credito(
+            usuario_id=self.cliente.id,
+            actividad_id=self.actividad.id,
+            monto=1000,
+            monto_restante=0,
+            origen='abono_cancelacion',
+            reserva_origen_id=None,
+            reserva_uso_id=reserva.id,
+            estado='usado',
+            fecha_uso=datetime(2026, 7, 1, 10, 0)
+        )
+        db.session.add(credito)
+        db.session.commit()
+
+        resultado = cancelar_clase_por_admin(self.clase.id, self.admin.id)
+        db.session.commit()
+
+        self.assertEqual(reserva.estado, 'cancelada')
+        self.assertEqual(credito.estado, 'disponible')
+        self.assertIsNone(credito.reserva_uso_id)
+        self.assertIsNone(credito.fecha_uso)
+        self.assertEqual(float(credito.monto_restante), 1000)
+        self.assertEqual(resultado['creditos_devueltos'], 1000)
+        self.assertEqual(resultado['devolucion_senia'], 0)
+        movimiento = MovimientoFinanciero.query.one()
+        self.assertEqual(movimiento.tipo, 'credito_devuelto_cancelacion_clase')
+        self.assertEqual(float(movimiento.monto), 1000)
+
     def test_descuenta_abono_pendiente_sin_generar_credito(self):
         reserva, abono = self.reserva_abonada(abono_pagado=False)
 

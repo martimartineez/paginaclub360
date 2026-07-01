@@ -129,7 +129,7 @@ def get_fechas_disponibles():
             'hora_inicio': c.hora_inicio.strftime('%H:%M'),
             'cupos_disponibles': cupos_disponibles_para_usuario(c, usuario_id),
             'cupo_maximo': c.cupo_maximo,
-            'precio_clase': float(c.actividad.precio_clase)
+            'precio_clase': c.get_precio()
         })
 
     return jsonify(list(fechas.values())), 200
@@ -173,7 +173,7 @@ def get_horarios_disponibles():
                 'dia_semana': c.dia_semana_str(),
                 'dia_semana_num': c.fecha.weekday(),
                 'hora_inicio': c.hora_inicio.strftime('%H:%M'),
-                'precio_clase': float(c.actividad.precio_clase),
+                'precio_clase': c.get_precio(),
                 'clases_mes': []
             }
         opciones[key]['clases_mes'].append({
@@ -181,7 +181,8 @@ def get_horarios_disponibles():
             'fecha': c.fecha.isoformat(),
             'cupos_disponibles': cupos_disponibles_para_usuario(c, usuario_id),
             'cancelada': c.cancelada,
-            'ya_inscripto': c.id in clases_ya_inscripto
+            'ya_inscripto': c.id in clases_ya_inscripto,
+            'precio_clase': c.get_precio()
         })
 
     return jsonify(list(opciones.values())), 200
@@ -219,7 +220,6 @@ def get_detalle_abono():
     clases_mes = [c for c in clases_mes if c.fecha.weekday() == dia_semana_num]
 
     actividad = Actividad.query.get(actividad_id)
-    precio_unitario = float(actividad.precio_clase) if actividad else 0
 
     # Verificar si el usuario ya está inscripto en alguna de estas clases
     from models import Reserva
@@ -270,8 +270,13 @@ def get_detalle_abono():
     # Y el usuario no perdió el beneficio
     es_mitad_de_mes = hoy.day >= mitad_mes
     aplicar_descuento = es_mitad_de_mes and total_disponibles > 1 and usuario_tiene_beneficio
-    precio_por_clase = precio_unitario * 0.8 if aplicar_descuento else precio_unitario
-    monto_total = precio_por_clase * total_disponibles
+    precios_incluidos = [
+        c.get_precio() * 0.8 if aplicar_descuento else c.get_precio()
+        for c in clases_disponibles
+    ]
+    precio_por_clase = precios_incluidos[0] if precios_incluidos else 0
+    precios_varian = len({round(p, 2) for p in precios_incluidos}) > 1
+    monto_total = sum(precios_incluidos)
 
     detalle_clases = []
     for c in clases_mes:
@@ -281,6 +286,8 @@ def get_detalle_abono():
         disponible = not c.cancelada and cupos_usuario > 0 and not ya_inscripto and not suspendida
         sin_cupo = not c.cancelada and cupos_usuario <= 0 and not ya_inscripto
         en_espera = sin_cupo and c.id in clases_en_espera_usuario
+        precio_clase = c.get_precio()
+        precio_final = precio_clase * 0.8 if aplicar_descuento else precio_clase
         detalle_clases.append({
             'clase_id': c.id,
             'fecha': c.fecha.isoformat(),
@@ -292,15 +299,17 @@ def get_detalle_abono():
             'suspendida': suspendida,
             'incluida_en_abono': disponible,
             'en_espera': en_espera,
-            'precio_clase': precio_por_clase if disponible else 0
+            'precio_clase': precio_final if disponible else 0,
+            'precio_base': precio_clase
         })
 
     return jsonify({
         'actividad': actividad.nombre if actividad else '',
         'dia_semana': clases_mes[0].dia_semana_str() if clases_mes else '',
         'hora_inicio': hora_inicio,
-        'precio_unitario': precio_unitario,
+        'precio_unitario': precio_por_clase,
         'precio_por_clase': precio_por_clase,
+        'precios_varian': precios_varian,
         'aplicar_descuento': aplicar_descuento,
         'descuento_pct': 20 if aplicar_descuento else 0,
         'usuario_tiene_beneficio': usuario_tiene_beneficio,

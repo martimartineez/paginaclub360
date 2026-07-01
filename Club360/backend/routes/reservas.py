@@ -632,7 +632,6 @@ def crear_abono():
     user_id = get_jwt_identity()
     data = request.get_json()
     clases_ids = data.get('clases_ids', [])
-    monto_total = float(data.get('monto_total', 0))
     target_user_id = int(data.get('usuario_id', user_id))
     metodo_pago = data.get('metodo_pago', 'tarjeta_credito')
     aplicar_descuento = data.get('aplicar_descuento', False)
@@ -658,6 +657,8 @@ def crear_abono():
     sincronizar_suspensiones_usuario(target_user_id, commit=True)
     if tiene_suspension_abonado_para_clase(target_user_id, primer_clase):
         return jsonify({'error': 'El cliente tiene una suspension activa para este turno'}), 403
+
+    monto_total = 0
 
     # 1. Creamos la entidad padre Abono
     nuevo_abono = Abono(
@@ -718,6 +719,7 @@ def crear_abono():
         if aplicar_descuento:
             precio = precio * 0.8
 
+        monto_total += precio
         reserva = Reserva(
             usuario_id=target_user_id, clase_id=clase_id, tipo='abonado',
             mes=clase.fecha.month, anio=clase.fecha.year,
@@ -738,6 +740,7 @@ def crear_abono():
 
     pago_diferido_permitido = puede_diferir_pago_abono()
     pago_diferido = bool(pago_diferido and pago_diferido_permitido)
+    nuevo_abono.monto_total = monto_total
 
     if reservas_creadas and not pago_diferido and not metodo_pago:
         db.session.rollback()

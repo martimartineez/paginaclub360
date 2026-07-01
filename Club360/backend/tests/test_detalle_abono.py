@@ -41,7 +41,7 @@ class DetalleAbonoTestCase(unittest.TestCase):
             fecha=date(2099, 7, 1),
             hora_inicio=time(18, 0),
             cupo_maximo=10,
-            precio_clase=1000,
+            precio_clase=1500,
             cancelada=False,
         )
         self.clase_cancelada = Clase(
@@ -74,6 +74,32 @@ class DetalleAbonoTestCase(unittest.TestCase):
         self.assertEqual(data['total_clases_mes'], 1)
         self.assertEqual(data['total_disponibles'], 1)
         self.assertEqual([c['clase_id'] for c in data['clases']], [self.clase_vigente.id])
+        self.assertEqual(data['precio_por_clase'], 1500)
+        self.assertEqual(data['monto_total'], 1500)
+        self.assertEqual(data['clases'][0]['precio_clase'], 1500)
+
+    def test_fechas_disponibles_devuelve_precio_efectivo_de_clase(self):
+        with patch('routes.clases.date', FixedDate):
+            response = self.client.get('/api/clases/fechas-disponibles', query_string={
+                'actividad_id': self.actividad.id,
+                'desde': '2099-07-01',
+                'hasta': '2099-07-31',
+            })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data[0]['horarios'][0]['precio_clase'], 1500)
+
+    def test_horarios_disponibles_devuelve_precio_efectivo_de_clase(self):
+        with patch('routes.clases.date', FixedDate):
+            response = self.client.get('/api/clases/horarios-disponibles', query_string={
+                'actividad_id': self.actividad.id,
+            })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data[0]['precio_clase'], 1500)
+        self.assertEqual(data[0]['clases_mes'][0]['precio_clase'], 1500)
 
 
 if __name__ == '__main__':

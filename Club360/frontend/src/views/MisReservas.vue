@@ -18,7 +18,7 @@
 
     <div v-else class="reservas-grid">
       <!-- Reservas normales -->
-      <div v-for="r in reservas" :key="'r-' + r.id" class="reserva-card card" :class="{ 'cancelada': r.estado === 'cancelada' && !r.asistida }">
+      <div v-for="r in reservas" :key="'r-' + r.id" class="reserva-card card" :class="{ 'cancelada': r.estado === 'cancelada' && !r.asistida && !r.falto }">
         <div class="reserva-header">
           <span class="sport-emoji">{{ sportEmoji(r.clase?.actividad) }}</span>
           <div class="reserva-info">
@@ -69,7 +69,7 @@
             Cancelar reserva
           </button>
         </div>
-        <div v-else class="reserva-actions">
+        <div v-else-if="r.estado === 'cancelada' && !r.asistida && !r.falto" class="reserva-actions">
           <span class="badge badge-red">Cancelada</span>
         </div>
         <div v-if="puedeMostrarQR(r) && qrVisible === r.id" class="qr-section">

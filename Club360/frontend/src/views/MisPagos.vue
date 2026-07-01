@@ -168,7 +168,7 @@
         </div>
 
         <div v-if="creditos.length === 0" class="empty-card card">
-          <p>No tenes creditos disponibles.</p>
+          <p>No tenes creditos.</p>
         </div>
 
         <div v-else class="pagos-lista">
@@ -178,7 +178,7 @@
               <div class="pago-info">
                 <div class="pago-titulo">
                   <h4>{{ c.actividad }}</h4>
-                  <span class="badge" :class="c.estado === 'disponible' ? 'badge-green' : 'badge-blue'">
+                  <span v-if="c.estado !== 'disponible'" class="badge" :class="c.estado === 'vencido' ? 'badge-red' : 'badge-blue'">
                     {{ c.estado }}
                   </span>
                 </div>
@@ -186,20 +186,8 @@
                   {{ c.origen_label }} <span v-if="c.fecha_creacion">- {{ formatFecha(c.fecha_creacion.slice(0, 10)) }}</span>
                 </p>
               </div>
-              <div class="pago-monto-col">
-                <span class="monto-pagado-ok">${{ c.monto_restante?.toLocaleString() }}</span>
-                <span class="monto-label">disponible</span>
-              </div>
             </div>
             <div class="credito-detalle-grid">
-              <div>
-                <span class="detalle-label">Monto original</span>
-                <strong>${{ c.monto?.toLocaleString() }}</strong>
-              </div>
-              <div>
-                <span class="detalle-label">Disponible</span>
-                <strong>${{ c.monto_restante?.toLocaleString() }}</strong>
-              </div>
               <div>
                 <span class="detalle-label">Uso</span>
                 <strong>{{ c.estado === 'disponible' ? 'Para clase suelta de la misma actividad' : 'Usado' }}</strong>

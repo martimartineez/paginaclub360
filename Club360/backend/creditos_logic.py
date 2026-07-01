@@ -85,6 +85,21 @@ def _registrar_movimiento(reserva, tipo, monto, actor_id, credito=None):
     return movimiento
 
 
+def _devolver_creditos_usados_en_reserva(reserva, actor_id):
+    total = 0
+    for credito in list(reserva.creditos_usados):
+        if credito.estado != 'usado':
+            continue
+        monto = _money(credito.monto)
+        credito.estado = 'disponible'
+        credito.monto_restante = monto
+        credito.reserva_uso_id = None
+        credito.fecha_uso = None
+        _registrar_movimiento(reserva, 'credito_devuelto_cancelacion_clase', monto, actor_id, credito=credito)
+        total += monto
+    return _money(total)
+
+
 def _marcar_reserva_cancelada_por_admin(reserva, actor_id, ahora):
     reserva.estado = 'cancelada'
     reserva.cancelada_por = actor_id
@@ -133,6 +148,7 @@ def cancelar_clase_por_admin(clase_id, actor_id, ahora=None):
         'devolucion_senia': 0,
         'descuento_abonos': 0,
         'creditos_generados': 0,
+        'creditos_devueltos': 0,
         'lista_espera_cancelada': 0,
         'movimientos': []
     }
@@ -148,7 +164,16 @@ def cancelar_clase_por_admin(clase_id, actor_id, ahora=None):
         resultado['reservas_canceladas'] += 1
 
         if reserva.tipo == 'no_abonado':
-            monto_a_devolver = _money(reserva.monto_pagado)
+            creditos_devueltos = _devolver_creditos_usados_en_reserva(reserva, actor_id)
+            resultado['creditos_devueltos'] += creditos_devueltos
+            monto_a_devolver = max(0, _money(reserva.monto_pagado) - creditos_devueltos)
+            if creditos_devueltos > 0:
+                resultado['movimientos'].append({
+                    'usuario_id': reserva.usuario_id,
+                    'reserva_id': reserva.id,
+                    'tipo': 'credito_devuelto_cancelacion_clase',
+                    'monto': creditos_devueltos
+                })
             if monto_a_devolver > 0:
                 _registrar_movimiento(reserva, 'devolucion_senia', monto_a_devolver, actor_id)
                 resultado['devolucion_senia'] += monto_a_devolver
@@ -158,7 +183,11 @@ def cancelar_clase_por_admin(clase_id, actor_id, ahora=None):
                     'tipo': 'devolucion_senia',
                     'monto': monto_a_devolver
                 })
-            enviar_aviso_clase_cancelada(reserva, devolucion_senia=monto_a_devolver)
+            enviar_aviso_clase_cancelada(
+                reserva,
+                devolucion_senia=monto_a_devolver,
+                credito_devuelto=creditos_devueltos
+            )
             continue
 
         valor_clase = calcular_valor_clase_abono(reserva)
@@ -210,11 +239,13 @@ def cancelar_clase_por_admin(clase_id, actor_id, ahora=None):
     resultado['devolucion_senia'] = _money(resultado['devolucion_senia'])
     resultado['descuento_abonos'] = _money(resultado['descuento_abonos'])
     resultado['creditos_generados'] = _money(resultado['creditos_generados'])
+    resultado['creditos_devueltos'] = _money(resultado['creditos_devueltos'])
     resultado['mensaje'] = (
         f"Clase cancelada. {resultado['reservas_canceladas']} reserva(s) afectada(s), "
         f"${resultado['devolucion_senia']:,.0f} a devolver por clases sueltas, "
         f"${resultado['descuento_abonos']:,.0f} descontados de abonos pendientes y "
-        f"${resultado['creditos_generados']:,.0f} en creditos generados."
+        f"${resultado['creditos_generados']:,.0f} en creditos generados. "
+        f"${resultado['creditos_devueltos']:,.0f} en creditos devueltos."
     )
     if resultado['reservas_asistidas_omitidas'] > 0:
         resultado['mensaje'] += f" {resultado['reservas_asistidas_omitidas']} reserva(s) con asistencia no se cancelaron."
@@ -251,6 +282,7 @@ def cancelar_turno_por_admin(turno_id, actor_id, desde=None, ahora=None):
         'devolucion_senia': 0,
         'descuento_abonos': 0,
         'creditos_generados': 0,
+        'creditos_devueltos': 0,
         'clases_pasadas_omitidas': 0,
         'reservas_asistidas_omitidas': 0,
         'movimientos': []
@@ -267,18 +299,21 @@ def cancelar_turno_por_admin(turno_id, actor_id, desde=None, ahora=None):
         resultado['devolucion_senia'] += parcial.get('devolucion_senia', 0)
         resultado['descuento_abonos'] += parcial.get('descuento_abonos', 0)
         resultado['creditos_generados'] += parcial.get('creditos_generados', 0)
+        resultado['creditos_devueltos'] += parcial.get('creditos_devueltos', 0)
         resultado['reservas_asistidas_omitidas'] += parcial.get('reservas_asistidas_omitidas', 0)
         resultado['movimientos'].extend(parcial.get('movimientos', []))
 
     resultado['devolucion_senia'] = _money(resultado['devolucion_senia'])
     resultado['descuento_abonos'] = _money(resultado['descuento_abonos'])
     resultado['creditos_generados'] = _money(resultado['creditos_generados'])
+    resultado['creditos_devueltos'] = _money(resultado['creditos_devueltos'])
     resultado['mensaje'] = (
         f"Turno cancelado. {resultado['clases_canceladas']} clase(s) futura(s) cancelada(s), "
         f"{resultado['reservas_canceladas']} reserva(s) afectada(s), "
         f"${resultado['devolucion_senia']:,.0f} a devolver por clases sueltas, "
         f"${resultado['descuento_abonos']:,.0f} descontados de abonos pendientes y "
-        f"${resultado['creditos_generados']:,.0f} en creditos generados."
+        f"${resultado['creditos_generados']:,.0f} en creditos generados. "
+        f"${resultado['creditos_devueltos']:,.0f} en creditos devueltos."
     )
     if resultado['clases_pasadas_omitidas'] > 0:
         resultado['mensaje'] += f" {resultado['clases_pasadas_omitidas']} clase(s) ya pasadas no se cancelaron."

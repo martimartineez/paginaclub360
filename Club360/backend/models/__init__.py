@@ -97,9 +97,9 @@ class Clase(db.Model):
         return ''
 
     def get_precio(self):
-        if self.precio_clase:
+        if self.precio_clase is not None:
             return float(self.precio_clase)
-        if self.turno and self.turno.precio_clase:
+        if self.turno and self.turno.precio_clase is not None:
             return float(self.turno.precio_clase)
         if self.actividad:
             return float(self.actividad.precio_clase)

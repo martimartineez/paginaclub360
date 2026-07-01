@@ -1034,6 +1034,7 @@ function mensajeCancelacionReserva(data) {
   const partes = ['Reserva cancelada']
   if (data.info) partes.push(data.info)
   if (data.credito_generado > 0) partes.push(`Credito generado: $${data.credito_generado.toLocaleString()}`)
+  if (data.creditos_devueltos > 0) partes.push(`Credito devuelto: $${data.creditos_devueltos.toLocaleString()}`)
   if (data.descuento_aplicado > 0) partes.push(`Descuento aplicado: $${data.descuento_aplicado.toLocaleString()}`)
   if (data.devolucion_senia > 0) partes.push(`Senia a devolver: $${data.devolucion_senia.toLocaleString()}`)
   if (data.advertencia) partes.push(data.advertencia)
