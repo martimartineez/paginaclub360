@@ -154,7 +154,7 @@ def login():
     if not user or not user.check_password(data.get('password', '')):
         return jsonify({'error': 'Credenciales inválidas'}), 401
     if not user.activo:
-        return jsonify({'error': 'Cuenta desactivada'}), 403
+        return jsonify({'error': 'Credenciales inválidas'}), 403
     token = create_access_token(identity=str(user.id))
     return jsonify({'token': token, 'user': user.to_dict()}), 200
 
