@@ -46,6 +46,11 @@
       </div>
     </div>
 
+    <div class="mapa-section">
+      <h2>¿Dónde estamos?</h2>
+      <div id="mapa" class="mapa-container"></div>
+    </div>
+
     <div class="features-section">
       <h2>¿Cómo funciona?</h2>
       <div class="grid-2" style="margin-top:20px">
@@ -71,7 +76,9 @@
 </template>
 
 <script setup>
+import { onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '../stores/auth.js'
+
 const auth = useAuthStore()
 const sports = [
   { name: 'Fútbol', icon: '⚽' },
@@ -79,6 +86,45 @@ const sports = [
   { name: 'Básquet', icon: '🏀' },
   { name: 'Vóley', icon: '🏐' }
 ]
+
+const LAT = -34.903484889514445
+const LNG = -57.93739027609452
+let mapInstance = null
+
+function cargarLeaflet() {
+  return new Promise((resolve) => {
+    if (window.L) { resolve(); return }
+
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = resolve
+    document.head.appendChild(script)
+  })
+}
+
+onMounted(async () => {
+  await cargarLeaflet()
+
+  mapInstance = window.L.map('mapa', { zoomControl: true }).setView([LAT, LNG], 16)
+
+  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(mapInstance)
+
+  window.L.marker([LAT, LNG])
+    .addTo(mapInstance)
+    .bindPopup('<b>Club 360</b><br>Facultad de Informática, La Plata')
+    .openPopup()
+})
+
+onBeforeUnmount(() => {
+  if (mapInstance) { mapInstance.remove(); mapInstance = null }
+})
 </script>
 
 <style scoped>
@@ -122,6 +168,16 @@ const sports = [
 .info-icon { font-size: 32px; }
 .highlight { color: var(--verde-claro); font-weight: 600; font-size: 16px !important; margin: 4px 0; }
 .note { font-size: 12px !important; color: var(--text-muted); margin-top: 4px; }
+.mapa-section { margin: 40px 0; }
+.mapa-section h2 { font-size: 36px; margin-bottom: 16px; }
+.mapa-container {
+  width: 100%;
+  height: 380px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  z-index: 0;
+}
 .features-section { margin-top: 40px; }
 .features-section h2 { font-size: 36px; margin-bottom: 4px; }
 .feature h3 { margin-bottom: 10px; font-size: 16px; }
