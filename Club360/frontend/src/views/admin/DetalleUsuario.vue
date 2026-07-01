@@ -147,7 +147,47 @@
         </div>
       </template>
     </div>
+  <!-- Modal de SUSPENSIÓN-->
+  <div class="modal-overlay" v-if="suspensionAConfirmar" 
+       style="position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:1000"
+       @click.self="suspensionAConfirmar = null">
+    <div style="background:var(--dark-2);border-radius:12px;border:0.5px solid var(--border);padding:1.5rem;width:100%;max-width:400px;margin:0 1rem">
+      <h3 style="font-size:16px;font-weight:500;margin:0 0 1rem">Confirmar levantamiento</h3>
 
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;margin-bottom:1.5rem">
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--text-secondary)">Tipo</span>
+          <span style="font-weight:500">{{ suspensionAConfirmar.tipo }}</span>
+        </div>
+
+        <div v-if="suspensionAConfirmar.tipo === 'abonado'" style="display:flex;justify-content:space-between">
+          <span style="color:var(--text-secondary)">Actividad</span>
+          <span style="font-weight:500">{{ suspensionAConfirmar.actividad || '—' }}</span>
+        </div>
+
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--text-secondary)">Monto original</span>
+          <span>${{ suspensionAConfirmar.monto_original?.toLocaleString() }}</span>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px">
+          <span style="color:var(--text-secondary)">Monto a pagar</span>
+          <span style="font-weight:500;color:var(--text-warning)">${{ suspensionAConfirmar.monto_deuda?.toLocaleString() }}</span>
+        </div>
+      </div>
+      <div class="alert alert-warning" style="margin-top:12px">
+          ⚠️ Al confirmar, el sistema registrará el cobro en efectivo automáticamente.
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-secondary btn-sm" @click="suspensionAConfirmar = null">
+          Cancelar
+        </button>
+        <button class="btn btn-primary btn-sm" @click="confirmarLevantamiento" :disabled="levantando === suspensionAConfirmar.id">
+          {{ levantando === suspensionAConfirmar.id ? 'Procesando...' : 'Confirmar pago' }}
+        </button>
+      </div>
+    </div>
+  </div>
     <!-- Tab: Inscribir a clase -->
     <div class="card" style="margin-bottom:24px" v-if="tab === 'inscribir'">
       <h3 style="font-size:18px;margin-bottom:16px">➕ Inscribir a {{ usuario.nombre }} en una clase</h3>
@@ -358,17 +398,12 @@
           <p style="color:var(--warning);font-weight:600;margin-top:4px">Deuda: ${{ s.monto_deuda?.toLocaleString() }}</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <select v-model="metodoLevantamiento" style="background:var(--dark-3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:13px">
-            <option value="efectivo">Efectivo</option>
-            <option value="tarjeta_credito">Tarjeta</option>
-          </select>
-          <button class="btn btn-primary btn-sm" @click="levantarSuspension(s)" :disabled="levantando === s.id">
+          <button class="btn btn-primary btn-sm" @click="abrirModal(s)" :disabled="levantando === s.id">
             {{ levantando === s.id ? 'Procesando...' : 'Levantar' }}
           </button>
         </div>
       </div>
     </div>
-
     <!-- Modal confirmación inscripción en efectivo -->
     <div class="modal-overlay" v-if="modalConfirmInscripcion" @click.self="modalConfirmInscripcion = false">
       <div class="modal card">
@@ -608,7 +643,7 @@ const reservasPagination = ref({
   hasPrev: false,
   hasNext: false
 })
-
+const suspensionAConfirmar = ref(null)
 const actividades = ref([])
 const clasesDisponibles = ref([])
 const inscribirForm = ref({ actividad_id: '', clase_id: null, tipo: 'abonado', monto_pagar: 'senia', abono_opcion: null })
@@ -1033,6 +1068,16 @@ async function levantarSuspension(s) {
   } finally {
     levantando.value = null
   }
+}
+
+async function abrirModal(s) {
+  suspensionAConfirmar.value = s
+}
+
+async function confirmarLevantamiento() {
+  const s = suspensionAConfirmar.value
+  suspensionAConfirmar.value = null
+  await levantarSuspension(s)
 }
 
 async function crearSuspensionClaseSueltaPrueba() {
