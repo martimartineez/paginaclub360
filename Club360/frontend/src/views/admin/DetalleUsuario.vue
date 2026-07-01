@@ -202,6 +202,7 @@
         <div class="input-group" style="margin:0">
           <label>Tipo de inscripción</label>
           <select v-model="inscribirForm.tipo" @change="onTipoChange">
+            <option value="" disabled>Seleccionar</option>
             <option value="abonado">Abonado (mensual)</option>
             <option value="no_abonado">Clase suelta</option>
           </select>
@@ -379,7 +380,7 @@
         <button
           class="btn btn-secondary"
           @click="abrirConfirmacionInscripcion"
-          :disabled="inscribirForm.tipo === 'no_abonado' ? !inscribirForm.clase_id || !sueltaHorarioEmpl : !inscribirForm.abono_opcion"
+          :disabled="!inscribirForm.tipo || (inscribirForm.tipo === 'no_abonado' ? !inscribirForm.clase_id || !sueltaHorarioEmpl : !inscribirForm.abono_opcion)"
         >
           Ver detalle y confirmar →
         </button>
@@ -646,7 +647,7 @@ const reservasPagination = ref({
 const suspensionAConfirmar = ref(null)
 const actividades = ref([])
 const clasesDisponibles = ref([])
-const inscribirForm = ref({ actividad_id: '', clase_id: null, tipo: 'abonado', monto_pagar: 'senia', abono_opcion: null })
+const inscribirForm = ref({ actividad_id: '', clase_id: null, tipo: '', monto_pagar: 'senia', abono_opcion: null })
 const inscribiendo = ref(false)
 const modalConfirmInscripcion = ref(false)
 const abonoDiaEmpl = ref(null)
@@ -785,6 +786,7 @@ async function abrirReservas() {
 async function inscribir() {
   tab.value = 'inscribir'
   resetInscribirState()
+  inscribirForm.value.tipo = ''
 }
 async function fetchReservas() {
   loadingReservas.value = true
@@ -836,6 +838,7 @@ function resetInscribirState() {
 function onActividadChange() {
   resetInscribirState()
   if (!inscribirForm.value.actividad_id) return
+  if (!inscribirForm.value.tipo) return
   if (inscribirForm.value.tipo === 'no_abonado') fetchFechasSueltaEmpl()
   else fetchHorariosAbonoEmpl()
 }
@@ -843,6 +846,7 @@ function onActividadChange() {
 function onTipoChange() {
   resetInscribirState()
   if (!inscribirForm.value.actividad_id) return
+  if (!inscribirForm.value.tipo) return
   if (inscribirForm.value.tipo === 'no_abonado') fetchFechasSueltaEmpl()
   else fetchHorariosAbonoEmpl()
 }
@@ -922,6 +926,7 @@ async function elegirHorarioAbonoEmpl(op) {
 }
 
 function abrirConfirmacionInscripcion() {
+  if (!inscribirForm.value.tipo) return
   modalConfirmInscripcion.value = true
 }
 
