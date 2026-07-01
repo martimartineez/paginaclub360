@@ -207,10 +207,6 @@
           <button class="btn btn-outline" @click="reservando = false">Cancelar</button>
         </div>
       </div>
-
-      <button v-else class="btn btn-primary" @click="reservando = true">
-        {{ clase.cupos_disponibles === 0 ? '⏳ Anotarme en lista de espera' : '+ Reservar' }}
-      </button>
     </div>
 
     <div class="card" style="margin-bottom:24px" v-if="auth.isEmpleado || auth.isAdmin">

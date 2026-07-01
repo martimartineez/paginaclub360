@@ -89,7 +89,7 @@
           </div>
         </div>
 
-        <div class="card danger-zone">
+        <div class="card danger-zone" v-if="!auth.isAdmin">
           <h3>Cuenta</h3>
           <p>Si eliminás tu cuenta, se borrarán todos tus datos y no podrás recuperarla.</p>
           <button class="btn btn-danger" @click="modalEliminarCuenta = true">
