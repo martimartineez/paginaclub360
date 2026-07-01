@@ -45,20 +45,6 @@
           La validación de pago y suspensiones se realiza en el servidor.
         </p>
 
-        <div class="manual-divider"><span>o usar lector/manual</span></div>
-
-        <div class="input-group">
-          <label>Contenido del QR</label>
-          <input
-            v-model.trim="qrInput"
-            placeholder="CLUB360-QR:..."
-            autocomplete="off"
-            @keyup.enter="registrar"
-          />
-        </div>
-        <button class="btn btn-outline" @click="registrar" :disabled="loading || !qrInput">
-          {{ loading ? 'Validando...' : 'Registrar asistencia' }}
-        </button>
       </div>
 
       <div class="card resultado" v-if="resultado">
@@ -100,7 +86,6 @@ import { onBeforeUnmount, ref } from 'vue'
 import jsQR from 'jsqr'
 import api from '../../api.js'
 
-const qrInput = ref('')
 const resultado = ref(null)
 const loading = ref(false)
 const error = ref('')
@@ -194,9 +179,8 @@ async function detectarQr() {
   try {
     const contenido = await leerContenidoQr()
     if (contenido) {
-      qrInput.value = contenido
       detenerScanner()
-      await registrar()
+      await registrar(contenido)
       return
     }
   } catch {
@@ -216,18 +200,17 @@ function detenerScanner() {
   if (videoRef.value) videoRef.value.srcObject = null
 }
 
-async function registrar() {
-  if (!qrInput.value || loading.value) return
+async function registrar(qrData) {
+  if (!qrData || loading.value) return
   detenerScanner()
   limpiarMensajes()
   loading.value = true
   try {
     const { data } = await api.post('/asistencia/registrar', {
-      qr_data: qrInput.value
+      qr_data: qrData
     })
     resultado.value = data
     mensaje.value = data.mensaje || 'Asistencia registrada correctamente.'
-    qrInput.value = ''
   } catch (e) {
     const respuesta = e.response?.data || {}
     error.value = respuesta.error || 'No se pudo registrar la asistencia.'
@@ -261,21 +244,6 @@ onBeforeUnmount(detenerScanner)
   border: 3px solid var(--verde-claro);
   border-radius: 12px;
   box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.25);
-}
-.manual-divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 22px 0 16px;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-transform: uppercase;
-}
-.manual-divider::before, .manual-divider::after {
-  content: '';
-  height: 1px;
-  flex: 1;
-  background: var(--border);
 }
 .cliente-info { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .avatar-lg {
