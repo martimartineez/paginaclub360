@@ -5,6 +5,7 @@ from unittest.mock import patch
 from flask import Flask
 from flask_jwt_extended import JWTManager, create_access_token
 
+from creditos_logic import cancelar_reserva_con_creditos
 from models import Abono, Actividad, Clase, Pago, Reserva, Usuario, db
 from routes.reservas import reservas_bp
 
@@ -81,12 +82,13 @@ class PagosResumenHistorialTestCase(unittest.TestCase):
         db.session.commit()
         return reserva
 
-    def crear_abono_con_reservas(self):
+    def crear_abono_con_reservas(self, fechas=None):
+        fechas = fechas or (date(2026, 7, 7), date(2026, 7, 14))
         abono = Abono(
             usuario_id=self.cliente.id,
             actividad_id=self.actividad.id,
-            mes=7,
-            anio=2026,
+            mes=fechas[0].month,
+            anio=fechas[0].year,
             monto_total=2000,
             monto_pagado=0
         )
@@ -94,7 +96,7 @@ class PagosResumenHistorialTestCase(unittest.TestCase):
         db.session.flush()
 
         reservas = []
-        for fecha in (date(2026, 7, 7), date(2026, 7, 14)):
+        for fecha in fechas:
             clase = Clase(
                 actividad_id=self.actividad.id,
                 fecha=fecha,
@@ -110,8 +112,8 @@ class PagosResumenHistorialTestCase(unittest.TestCase):
                 abono_id=abono.id,
                 tipo='abonado',
                 estado='activa',
-                mes=7,
-                anio=2026,
+                mes=fecha.month,
+                anio=fecha.year,
                 monto_total=1000,
                 monto_pagado=0,
                 senia_pagada=True
@@ -183,6 +185,35 @@ class PagosResumenHistorialTestCase(unittest.TestCase):
 
         db.session.refresh(reserva_futura)
         self.assertEqual(reserva_futura.estado, 'suspendida')
+
+    def test_abono_con_todas_las_clases_canceladas_no_figura_pagado(self):
+        abono, reservas = self.crear_abono_con_reservas(
+            (date(2099, 7, 7), date(2099, 7, 14))
+        )
+
+        for reserva in reservas:
+            cancelar_reserva_con_creditos(reserva)
+        db.session.commit()
+        db.session.refresh(abono)
+
+        self.assertEqual(Pago.query.count(), 0)
+        self.assertEqual(float(abono.monto_pagado), 0)
+        self.assertEqual(float(abono.monto_total), 0)
+
+        response = self.client.get(
+            '/api/reservas/pagos-resumen',
+            headers=self.auth_headers()
+        )
+
+        self.assertEqual(response.status_code, 200)
+        resumen = response.get_json()
+        self.assertNotIn(abono.id, [item.get('abono_id') for item in resumen['pendientes']])
+        historial = [item for item in resumen['pagados'] if item.get('abono_id') == abono.id]
+        self.assertEqual(len(historial), 1)
+        self.assertEqual(historial[0]['estado'], 'cancelada')
+        self.assertEqual(historial[0]['estado_pago'], 'cancelada')
+        self.assertEqual(historial[0]['deuda'], 0)
+        self.assertEqual(historial[0]['deuda_label'], 'Cancelada')
 
 
 if __name__ == '__main__':

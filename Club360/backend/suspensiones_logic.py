@@ -178,7 +178,13 @@ def _upsert_suspensiones_abonos_vencidos(usuario_id):
     for abono in abonos:
         reservas = [
             r for r in abono.reservas
-            if r.tipo == 'abonado' and r.clase and r.estado in ('activa', 'suspendida')
+            if (
+                r.tipo == 'abonado'
+                and r.clase
+                and r.estado in ('activa', 'suspendida')
+                and r.clase.activa
+                and not r.clase.cancelada
+            )
         ]
         if not reservas:
             continue

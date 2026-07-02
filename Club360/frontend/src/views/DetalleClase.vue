@@ -392,6 +392,7 @@ import { useAuthStore } from '../stores/auth.js'
 import api from '../api.js'
 import FormTarjeta from '../components/FormTarjeta.vue'
 import { MENSAJE_TARJETA_VENCIDA, tarjetaVencida } from '../utils/tarjetas.js'
+import { MENSAJE_FONDOS_INSUFICIENTES, pagoRechazadoPorFondos } from '../utils/pagos.js'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -707,6 +708,10 @@ async function irAPagarCupo() {
 
 async function aceptarCupoLista() {
   error.value = ''
+  if (montoCupoAPagar.value > 0 && pagoRechazadoPorFondos(auth.user)) {
+    error.value = MENSAJE_FONDOS_INSUFICIENTES
+    return
+  }
   if (montoCupoAPagar.value > 0 && tarjetaSeleccionadaCupo.value && tarjetaVencida(tarjetaSeleccionadaCupo.value.vencimiento)) {
     error.value = MENSAJE_TARJETA_VENCIDA
     return

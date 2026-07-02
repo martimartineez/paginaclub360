@@ -217,7 +217,7 @@
                   <span class="badge" :class="historialBadgeClass(item)">
                     {{ historialTipoLabel(item) }}
                   </span>
-                  <span v-if="item.estado === 'cancelada'" class="badge badge-red">Cancelada</span>
+                  <span v-if="historialCancelado(item)" class="badge badge-red">Cancelada</span>
                   <span v-else-if="item.deuda > 0" class="badge badge-red">No pagado</span>
                   <span v-else class="badge badge-green">Pagado</span>
                 </div>
@@ -230,10 +230,10 @@
                 </p>
               </div>
               <div class="pago-monto-col">
-                <span :class="item.deuda > 0 ? 'monto-deuda' : 'monto-pagado-ok'">
-                  ${{ (item.deuda > 0 ? item.deuda : item.monto_pagado)?.toLocaleString() }}
+                <span :class="historialMontoClass(item)">
+                  ${{ historialMonto(item)?.toLocaleString() }}
                 </span>
-                <span class="monto-label">{{ item.deuda > 0 ? 'pendiente' : 'pagado' }}</span>
+                <span class="monto-label">{{ historialMontoLabel(item) }}</span>
               </div>
             </div>
 
@@ -241,11 +241,14 @@
               <div class="progreso-barra">
                 <div
                   class="progreso-fill"
-                  :class="{ 'progreso-completo': item.deuda <= 0 }"
+                  :class="{ 'progreso-completo': item.deuda <= 0 && !historialCancelado(item) }"
                   :style="{ width: progresoWidth(item) + '%' }"
                 ></div>
               </div>
-              <span class="progreso-txt">
+              <span v-if="historialCancelado(item)" class="progreso-txt">
+                {{ item.deuda_label || 'Cancelada' }}
+              </span>
+              <span v-else class="progreso-txt">
                 ${{ item.monto_pagado?.toLocaleString() }} de ${{ item.monto_total?.toLocaleString() }}
                 <span v-if="item.deuda > 0">- pendiente ${{ item.deuda?.toLocaleString() }}</span>
               </span>
@@ -326,8 +329,11 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../api.js'
 import FormTarjeta from '../components/FormTarjeta.vue'
+import { useAuthStore } from '../stores/auth.js'
+import { MENSAJE_FONDOS_INSUFICIENTES, pagoRechazadoPorFondos } from '../utils/pagos.js'
 import { MENSAJE_TARJETA_VENCIDA, tarjetaVencida } from '../utils/tarjetas.js'
 
+const auth = useAuthStore()
 const loading = ref(true)
 const pendientes = ref([])
 const pagados = ref([])
@@ -365,8 +371,28 @@ function formatFecha(fechaStr) {
 }
 
 function progresoWidth(item) {
+  if (historialCancelado(item)) return 0
   if (!item.monto_total) return 0
   return Math.min(100, (item.monto_pagado / item.monto_total) * 100)
+}
+
+function historialCancelado(item) {
+  return item?.estado === 'cancelada' || item?.estado_pago === 'cancelada'
+}
+
+function historialMonto(item) {
+  if (historialCancelado(item)) return item.monto_pagado || 0
+  return item.deuda > 0 ? item.deuda : item.monto_pagado
+}
+
+function historialMontoClass(item) {
+  if (historialCancelado(item) || item.deuda > 0) return 'monto-deuda'
+  return 'monto-pagado-ok'
+}
+
+function historialMontoLabel(item) {
+  if (historialCancelado(item)) return 'cancelada'
+  return item.deuda > 0 ? 'pendiente' : 'pagado'
 }
 
 function historialKey(item) {
@@ -457,6 +483,10 @@ function onTarjetaGuardada(t) {
 
 async function ejecutarPago() {
   if (!tarjetaSeleccionada.value) return
+  if (tipoModalPago.value !== 'suspension' && pagoRechazadoPorFondos(auth.user)) {
+    errPago.value = MENSAJE_FONDOS_INSUFICIENTES
+    return
+  }
   if (tarjetaVencida(tarjetaSeleccionada.value.vencimiento)) {
     errPago.value = MENSAJE_TARJETA_VENCIDA
     return

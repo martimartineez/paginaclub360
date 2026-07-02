@@ -362,7 +362,7 @@
           </div>
 
           <button class="btn btn-primary" style="width:100%;max-width:500px;margin-top:16px"
-            @click="detalleAbono.total_disponibles === 0 ? confirmarPago() : (paso = 5, fetchTarjetas())"
+            @click="detalleAbono.total_disponibles === 0 || esPeriodoGracia ? confirmarPago() : (paso = 5, fetchTarjetas())"
             :disabled="!detalleAbono.clases?.some(c => !c.cancelada && !c.ya_inscripto) || pagando">
             {{ textoBotonAbono }}
           </button>
@@ -479,7 +479,14 @@
             <span class="confirm-label">Crédito usado</span>
             <span class="confirm-value">{{ resultadoExito.credito_usado }} crédito</span>
           </div>
-          <div class="confirm-row total-row"><span class="confirm-label">Pagado</span><span class="confirm-value total-value">${{ montoFinal?.toLocaleString() }}</span></div>
+          <div v-if="resultadoExito?.pago_diferido" class="confirm-row total-row">
+            <span class="confirm-label">Pendiente</span>
+            <span class="confirm-value total-value">${{ montoFinal?.toLocaleString() }}</span>
+          </div>
+          <div v-else class="confirm-row total-row">
+            <span class="confirm-label">Pagado</span>
+            <span class="confirm-value total-value">${{ montoFinal?.toLocaleString() }}</span>
+          </div>
         </div>
         <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
           <router-link to="/mis-reservas" class="btn btn-primary">Ver mis reservas</router-link>
@@ -543,6 +550,7 @@ import { useAuthStore } from '../stores/auth.js'
 import FormTarjeta from '../components/FormTarjeta.vue'
 import api from '../api.js'
 import { MENSAJE_TARJETA_VENCIDA, tarjetaVencida } from '../utils/tarjetas.js'
+import { MENSAJE_FONDOS_INSUFICIENTES, pagoRechazadoPorFondos } from '../utils/pagos.js'
 
 const auth = useAuthStore()
 
@@ -602,6 +610,7 @@ const esPeriodoGracia = computed(() => {
 const textoBotonAbono = computed(() => {
   if (pagando.value) return 'Procesando...'
   if (detalleAbono.value?.total_disponibles === 0) return 'Anotarme en lista de espera'
+  if (esPeriodoGracia.value) return 'Confirmar inscripción'
   return `Ir a pagar $${detalleAbono.value?.monto_total?.toLocaleString()}`
 })
 
@@ -770,7 +779,14 @@ function onTarjetaGuardada(t) {
 
 async function confirmarPago() {
   errorPago.value = ''
-  const pagaConTarjeta = montoFinal.value > 0 && tarjetaSeleccionada.value
+  const intentaPagar = seleccion.value.tipo === 'abonado'
+    ? (!esPeriodoGracia.value && detalleAbono.value?.clases?.some(c => c.incluida_en_abono))
+    : montoFinal.value > 0
+  if (intentaPagar && pagoRechazadoPorFondos(auth.user)) {
+    errorPago.value = MENSAJE_FONDOS_INSUFICIENTES
+    return
+  }
+  const pagaConTarjeta = intentaPagar && tarjetaSeleccionada.value
   if (pagaConTarjeta && tarjetaVencida(tarjetaSeleccionada.value.vencimiento)) {
     errorPago.value = MENSAJE_TARJETA_VENCIDA
     return

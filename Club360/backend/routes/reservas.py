@@ -15,6 +15,12 @@ import os
 from qr_asistencia import generar_qr_asistencia
 
 reservas_bp = Blueprint('reservas', __name__)
+EMAIL_PAGO_RECHAZADO = 'jesus@gmail.com'
+MENSAJE_FONDOS_INSUFICIENTES = 'fondos insuficientes'
+
+
+def usuario_con_pago_rechazado(usuario):
+    return (usuario.email or '').strip().lower() == EMAIL_PAGO_RECHAZADO if usuario else False
 
 
 def redirect_rechazo_lista_espera(estado):
@@ -55,6 +61,21 @@ def abono_pago_vencido(abono, hoy=None):
         return False
     hoy = hoy or date.today()
     return hoy > date(abono.anio, abono.mes, 10)
+
+
+def reserva_abono_activa(reserva):
+    return (
+        reserva.tipo == 'abonado'
+        and reserva.estado != 'cancelada'
+        and reserva.clase is not None
+        and reserva.clase.activa
+        and not reserva.clase.cancelada
+    )
+
+
+def abono_cancelado_por_clases(abono):
+    reservas_abono = [r for r in abono.reservas if r.tipo == 'abonado']
+    return bool(reservas_abono) and not any(reserva_abono_activa(r) for r in reservas_abono)
 
 
 def validar_prioridad_lista_espera(clase, usuario_id):
@@ -128,6 +149,7 @@ def anotar_en_lista_espera(usuario_id, clase_id, tipo, mes=None, anio=None):
 
 
 def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, monto_pagar=None, usar_credito=False):
+    actor = Usuario.query.get(int(actor_id)) if actor_id is not None else None
     clase = Clase.query.get(clase_id)
     if not clase:
         return None, 'Clase no encontrada', None
@@ -180,6 +202,9 @@ def crear_reserva_unica(usuario_id, clase_id, tipo, actor_id, metodo_pago=None, 
     monto_cobrar = max(0, round(float(monto or 0) - float(monto_cubierto_por_credito or 0), 2))
 
     if metodo_pago and monto_cobrar > 0:
+        if usuario_con_pago_rechazado(actor):
+            db.session.rollback()
+            return None, MENSAJE_FONDOS_INSUFICIENTES, None
         pago = Pago(
             reserva_id=reserva.id, monto=monto_cobrar,
             metodo=metodo_pago,
@@ -504,7 +529,8 @@ def get_pagos_resumen():
         monto_total = float(abono.monto_total or 0)
         monto_pagado = float(abono.monto_pagado or 0)
         deuda = max(0, monto_total - monto_pagado)
-        vencido = deuda > 0 and abono_pago_vencido(abono, hoy)
+        cancelado = abono_cancelado_por_clases(abono)
+        vencido = deuda > 0 and not cancelado and abono_pago_vencido(abono, hoy)
 
         # Usamos la primera clase del abono para extraer día y horario descriptivo en la interfaz
         primera_reserva = abono.reservas[0] if abono.reservas else None
@@ -523,13 +549,17 @@ def get_pagos_resumen():
             'mes': abono.mes,
             'anio': abono.anio,
             'fecha_creacion': abono.fecha_creacion.isoformat() if abono.fecha_creacion else None,
-            'vence_dia_10': deuda > 0 and not vencido,
+            'estado': 'cancelada' if cancelado else 'activa',
+            'vence_dia_10': deuda > 0 and not vencido and not cancelado,
             'abono_vencido': vencido,
-            'estado_pago': 'vencido' if vencido else ('pendiente' if deuda > 0 else 'pagado'),
+            'estado_pago': 'cancelada' if cancelado else ('vencido' if vencido else ('pendiente' if deuda > 0 else 'pagado')),
             'deuda_label': f'Abono pendiente — ${deuda:,.0f}' if deuda > 0 else 'Pagado'
         }
 
-        if deuda > 0:
+        if cancelado:
+            item['deuda_label'] = 'Cancelada'
+            pagados.append(item)
+        elif deuda > 0:
             if vencido:
                 item['deuda_label'] = f'No pagado - ${deuda:,.0f}'
                 pagados.append(item)
@@ -740,6 +770,9 @@ def crear_abono():
 
     pago_diferido_permitido = puede_diferir_pago_abono()
     pago_diferido = bool(pago_diferido and pago_diferido_permitido)
+    if pago_diferido_permitido and usuario_con_pago_rechazado(actor):
+        pago_diferido = True
+        metodo_pago = None
     nuevo_abono.monto_total = monto_total
 
     if reservas_creadas and not pago_diferido and not metodo_pago:
@@ -748,6 +781,9 @@ def crear_abono():
 
     # 3. Si no es diferido por periodo de gracia, se cobra el abono completo en el momento
     if not pago_diferido and metodo_pago and reservas_creadas:
+        if usuario_con_pago_rechazado(actor):
+            db.session.rollback()
+            return jsonify({'error': MENSAJE_FONDOS_INSUFICIENTES}), 400
         pago = Pago(
             abono_id=nuevo_abono.id,
             monto=monto_total,
@@ -799,6 +835,8 @@ def registrar_pago(reserva_id):
 
     if reserva.tipo == 'no_abonado' and clase_ya_ocurrio(reserva.clase):
         return jsonify({'error': 'No se puede pagar una clase que ya ocurrio'}), 400
+    if usuario_con_pago_rechazado(user):
+        return jsonify({'error': MENSAJE_FONDOS_INSUFICIENTES}), 400
 
     pago = Pago(
         reserva_id=reserva_id, monto=monto, metodo=metodo,
@@ -829,6 +867,8 @@ def registrar_pago_abono(abono_id):
 
     if metodo == 'efectivo' and user.rol not in ('empleado', 'administrador'):
         return jsonify({'error': 'El pago en efectivo debe registrarlo un empleado'}), 403
+    if usuario_con_pago_rechazado(user):
+        return jsonify({'error': MENSAJE_FONDOS_INSUFICIENTES}), 400
 
     pago = Pago(
         abono_id=abono_id, monto=monto, metodo=metodo,

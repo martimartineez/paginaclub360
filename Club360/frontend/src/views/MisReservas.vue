@@ -174,7 +174,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import api from '../api.js'
+import { useAuthStore } from '../stores/auth.js'
+import { MENSAJE_FONDOS_INSUFICIENTES, pagoRechazadoPorFondos } from '../utils/pagos.js'
 
+const auth = useAuthStore()
 const reservas = ref([])
 const listaEspera = ref([])
 const loading = ref(false)
@@ -240,6 +243,11 @@ function mensajeCancelacion(data) {
 }
 
 async function realizarPago() {
+  error.value = ''
+  if (pagoRechazadoPorFondos(auth.user)) {
+    error.value = MENSAJE_FONDOS_INSUFICIENTES
+    return
+  }
   pagoLoading.value = true
   try {
     await api.post(`/reservas/${pagoModal.value.id}/pagar`, {
