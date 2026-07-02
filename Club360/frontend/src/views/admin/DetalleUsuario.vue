@@ -48,10 +48,10 @@
             <span class="accion-icon">🔓</span>
             <span>Ver suspensiones</span>
           </button>
-          <button class="accion-btn" v-if="auth.isAdmin" @click="crearSuspensionClaseSueltaPrueba" :disabled="creandoSuspensionPrueba">
+          <!-- <button class="accion-btn" v-if="auth.isAdmin" @click="crearSuspensionClaseSueltaPrueba" :disabled="creandoSuspensionPrueba">
             <span class="accion-icon">!</span>
             <span>{{ creandoSuspensionPrueba ? 'Creando...' : 'Probar suspension clase suelta' }}</span>
-          </button>
+          </button> -->
         </template>
         <button
           class="accion-btn"

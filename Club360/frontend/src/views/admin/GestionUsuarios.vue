@@ -164,7 +164,7 @@ async function fetchUsuarios() {
  
 const listaUsuarios = computed(() => {
   if(auth.isAdmin)
-    return usuarios.value.filter((u => u.activo));
+    return usuarios.value.filter((u => u.activo && Number(u.id) !== Number(auth.user?.id)));
   else
     return usuarios.value.filter((u => u.activo && u.rol == "cliente"));
 })

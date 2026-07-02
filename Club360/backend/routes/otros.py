@@ -38,9 +38,13 @@ def require_rol(*roles):
 @jwt_required()
 @require_rol('administrador', 'empleado')
 def listar_usuarios():
+    actor_id = int(get_jwt_identity())
+    actor = Usuario.query.get(actor_id)
     rol = request.args.get('rol')
     q = request.args.get('q')
     query = Usuario.query
+    if actor and actor.rol == 'administrador':
+        query = query.filter(Usuario.id != actor_id)
     if rol:
         query = query.filter_by(rol=rol)
     if q:
