@@ -516,7 +516,7 @@
         </div>
       </div>
       <div class="clases-grid">
-        <div v-for="clase in clasesAdmin" :key="clase.id" class="clase-card card" :class="{'cancelada-card': clase.cancelada}">
+        <div v-for="clase in clasesAdmin" :key="clase.id" class="clase-card card">
           <div class="clase-header">
             <span style="font-size:32px">{{ sportEmoji(clase.actividad) }}</span>
             <div style="flex:1">
@@ -524,7 +524,6 @@
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
                 <span class="dia-badge">{{ clase.dia_semana }}</span>
                 <span class="dia-badge fecha-badge">{{ formatFecha(clase.fecha) }}</span>
-                <span v-if="clase.cancelada" class="badge badge-red">Cancelada</span>
               </div>
             </div>
             <div style="text-align:center">
@@ -873,12 +872,12 @@ function reiniciar() {
 }
 
 async function fetchClasesAdmin() {
-  const params = { solo_activas: false }
+  const params = { solo_activas: true }
   if (filtros.value.actividad_id) params.actividad_id = filtros.value.actividad_id
   if (filtros.value.desde) params.desde = filtros.value.desde
   if (filtros.value.hasta) params.hasta = filtros.value.hasta
   const { data } = await api.get('/clases/', { params })
-  clasesAdmin.value = data
+  clasesAdmin.value = data.filter(clase => !clase.cancelada)
 }
 
 onMounted(async () => {
@@ -1006,7 +1005,6 @@ onMounted(async () => {
 /* Admin */
 .clases-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px; }
 .clase-card { display:flex;flex-direction:column;gap:12px; }
-.cancelada-card { opacity:0.6;border-color:var(--danger) !important; }
 .clase-header { display:flex;align-items:flex-start;gap:10px; }
 .dia-badge { display:inline-block;padding:2px 8px;background:var(--dark-3);border-radius:4px;font-size:12px;color:var(--text-muted); }
 .fecha-badge { color:var(--verde-claro);background:rgba(46,125,50,0.15); }
