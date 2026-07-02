@@ -139,40 +139,40 @@
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && miReserva">
-      <h3 style="font-size:20px;margin-bottom:16px">📲 Tu QR de asistencia</h3>
-      <div v-if="miReserva.estado === 'activa' || miReserva.asistida" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-        <img
-          v-if="miReserva.qr_code"
-          :src="`data:image/png;base64,${miReserva.qr_code}`"
-          style="width:160px;height:160px;border-radius:8px;background:white;padding:8px"
-        />
-        <div>
-          <p style="font-size:14px;color:var(--text-muted);margin-bottom:8px">
-            Mostrá este QR al empleado al ingresar a la clase.
-          </p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <span class="badge" :class="miReserva.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">
-              {{ miReserva.tipo === 'abonado' ? 'Abonado' : 'Clase suelta' }}
-            </span>
-            <span class="badge" :class="miReserva.senia_pagada ? 'badge-green' : 'badge-red'">
-              {{ miReserva.senia_pagada ? 'Seña pagada' : 'Seña pendiente' }}
-            </span>
-          </div>
-          <button
-            v-if="puedeCancelarMiReserva"
-            class="btn btn-danger btn-sm"
-            style="margin-top:12px"
-            @click="confirmarCancelarReserva = true"
-          >
-            ✕ Cancelar mi reserva
-          </button>
-        </div>
-      </div>
-      <div v-else>
-        <span class="badge badge-red">Reserva {{ miReserva.estado }}</span>
-      </div>
-    </div>
+    <!-- <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && miReserva"> -->
+      <!-- <h3 style="font-size:20px;margin-bottom:16px">📲 Tu QR de asistencia</h3> -->
+      <!-- <div v-if="miReserva.estado === 'activa' || miReserva.asistida" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap"> -->
+        <!-- <img -->
+          <!-- v-if="miReserva.qr_code" -->
+          <!-- :src="`data:image/png;base64,${miReserva.qr_code}`" -->
+          <!-- style="width:160px;height:160px;border-radius:8px;background:white;padding:8px" -->
+        <!-- /> -->
+        <!-- <div> -->
+          <!-- <p style="font-size:14px;color:var(--text-muted);margin-bottom:8px"> -->
+            <!-- Mostrá este QR al empleado al ingresar a la clase. -->
+          <!-- </p> -->
+          <!-- <div style="display:flex;gap:8px;flex-wrap:wrap"> -->
+            <!-- <span class="badge" :class="miReserva.tipo === 'abonado' ? 'badge-green' : 'badge-blue'"> -->
+              <!-- {{ miReserva.tipo === 'abonado' ? 'Abonado' : 'Clase suelta' }} -->
+            <!-- </span> -->
+            <!-- <span class="badge" :class="miReserva.senia_pagada ? 'badge-green' : 'badge-red'"> -->
+              <!-- {{ miReserva.senia_pagada ? 'Seña pagada' : 'Seña pendiente' }} -->
+            <!-- </span> -->
+          <!-- </div> -->
+          <!-- <button -->
+            <!-- v-if="puedeCancelarMiReserva" -->
+            <!-- class="btn btn-danger btn-sm" -->
+            <!-- style="margin-top:12px" -->
+            <!-- @click="confirmarCancelarReserva = true" -->
+          <!-- > -->
+            <!-- ✕ Cancelar mi reserva -->
+          <!-- </button> -->
+        <!-- </div> -->
+      <!-- </div> -->
+      <!-- <div v-else> -->
+        <!-- <span class="badge badge-red">Reserva {{ miReserva.estado }}</span> -->
+      <!-- </div> -->
+    <!-- </div> -->
 
     <div class="card" style="margin-bottom:24px" v-if="auth.isCliente && !miReserva && !clase.cancelada && !cupoReservadoParaMi">
       <h3 style="font-size:20px;margin-bottom:12px">Reservar esta clase</h3>
