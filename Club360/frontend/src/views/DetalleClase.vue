@@ -15,7 +15,7 @@
           <span v-if="clase.cancelada" class="badge badge-red">Cancelada</span>
         </div>
       </div>
-      <div v-if="auth.isAdmin && !clase.cancelada" style="display:flex;gap:10px;flex-wrap:wrap">
+      <div v-if="auth.isAdmin && !clase.cancelada && claseEsFutura" style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-secondary" @click="abrirEditarCupo">
           ✏️ Editar cupo
         </button>
@@ -471,6 +471,7 @@ const creditoCupoCubreTotal = computed(() => {
 
 const listaEsperaAbonados = computed(() => listaEspera.value.filter(l => l.tipo_preferencia === 'abonado'))
 const listaEsperaNoAbonados = computed(() => listaEspera.value.filter(l => l.tipo_preferencia === 'no_abonado'))
+const claseEsFutura = computed(() => reservaEsFutura(null))
 const puedeCancelarMiReserva = computed(() => {
   const reserva = miReserva.value
   return reserva?.estado === 'activa' && !reserva.asistida && !reserva.falto && reservaEsFutura(reserva)
@@ -522,6 +523,7 @@ function asistenciaBadge(reserva) {
 }
 
 function abrirEditarCupo() {
+  if (!claseEsFutura.value) return
   nuevoCupo.value = clase.value.cupo_maximo
   modalEditarCupo.value = true
 }
@@ -593,6 +595,11 @@ async function reservar(tipo) {
 
 async function guardarCupo() {
   if (!isCupoValido.value) return
+  if (!claseEsFutura.value) {
+    modalEditarCupo.value = false
+    error.value = 'No se puede editar el cupo de una clase que ya ocurrio'
+    return
+  }
   guardandoCupo.value = true
   error.value = ''
   try {
@@ -608,6 +615,11 @@ async function guardarCupo() {
 }
 
 async function cancelarClase() {
+  if (!claseEsFutura.value) {
+    confirmarCancelar.value = false
+    error.value = 'No se puede cancelar una clase que ya ocurrio'
+    return
+  }
   cancelando.value = true
   error.value = ''
   try {
