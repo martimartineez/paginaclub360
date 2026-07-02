@@ -124,7 +124,7 @@
       {{ cupoTokenInvalidoMensaje }}
     </div>
 
-    <div class="grid-3" style="margin-bottom:24px">
+    <div class="grid-3" style="margin-bottom:24px" v-if="auth.isEmpleado || auth.isAdmin">
       <div class="card stat-card">
         <span class="stat-num">{{ clase.cupos_disponibles }}</span>
         <span class="stat-label">Cupos disponibles</span>
