@@ -201,7 +201,7 @@
           <strong>{{ desactivarModal.hora_inicio }} hs</strong>.
         </p>
         <p style="color:var(--text-muted);margin:12px 0;font-size:14px">
-          Se cancelaran todas sus clases futuras y se procesaran devoluciones de senia,
+          Se cancelaran todas sus clases futuras y se procesaran devoluciones de seña,
           descuentos en abonos pendientes o creditos segun corresponda.
         </p>
         <div style="display:flex;gap:10px">
