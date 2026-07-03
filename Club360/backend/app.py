@@ -325,7 +325,7 @@ def seed_data(app):
         cli4 = Usuario(nombre='Jesus', apellido='Diaz', dni='10675222', email='jesus@gmail.com', rol='cliente')
         cli4.set_password('12345678')
         cli5 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000001', email='laumendezporv@hotmail.com', rol='cliente')
-        cli5.set_password('secretoo')
+        cli5.set_password('12345678')
 
         actividades = [
             Actividad(nombre='Fútbol', descripcion='Fútbol 5 en cancha de césped sintético', precio_clase=2500),
