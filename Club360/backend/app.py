@@ -201,7 +201,7 @@ def seed_data(app):
             return
 
         # Usuarios
-        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='admin@club360.com', rol='administrador')
+        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='lautaromendezportela@gmail.com', rol='administrador')
         admin.set_password('admin123')
         emp = Usuario(nombre='Carlos', apellido='Gómez', dni='11111111', email='empleado@club360.com', rol='empleado')
         emp.set_password('emp123')
@@ -217,8 +217,6 @@ def seed_data(app):
         cli4.set_password('12345678')
         cli5 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000001', email='laumendezporv@hotmail.com', rol='cliente')
         cli5.set_password('secretoo')
-        cli6 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000002', email='lautaromendezportela@gmail.com', rol='cliente')
-        cli6.set_password('secretoo')
 
         actividades = [
             Actividad(nombre='Fútbol', descripcion='Fútbol 5 en cancha de césped sintético', precio_clase=2500),
@@ -226,7 +224,7 @@ def seed_data(app):
             Actividad(nombre='Básquet', descripcion='Básquet en cancha reglamentaria', precio_clase=2000),
             Actividad(nombre='Vóley', descripcion='Vóley en cancha de arena', precio_clase=2000),
         ]
-        db.session.add_all([admin, emp, cli, cli1, cli2, cli3, cli4, cli5, cli6] + actividades)
+        db.session.add_all([admin, emp, cli, cli1, cli2, cli3, cli4, cli5] + actividades)
         db.session.commit()
 
         # Credito manual para laumendezporv@hotmail.com — Voley 15:00
@@ -242,8 +240,8 @@ def seed_data(app):
         )
         db.session.add(credito_cli5)
         db.session.commit()
-        # Tarjeta para laumendezporv@hotmail.com y lautaromendezportela@gmail.com
-        for cli_tar in [cli5, cli6]:
+        # Tarjeta para laumendezporv@hotmail.com 
+        for cli_tar in [cli5]:
             tarjeta = TarjetaCredito(
                 usuario_id=cli_tar.id,
                 ultimos_4='2222',
