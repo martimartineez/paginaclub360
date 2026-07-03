@@ -41,6 +41,115 @@ def create_app():
     app.register_blueprint(creditos_bp, url_prefix='/api/creditos')
     app.register_blueprint(turnos_bp, url_prefix='/api/turnos')
 
+
+    @app.cli.command("seed-colo")
+    def seed_colo_command():
+        """reset-db + datos extra para demo: Maria con pago pendiente, pago realizado, suspension y credito."""
+        from models import db
+        db.drop_all()
+        db.create_all()
+        seed_data(app)
+
+        with app.app_context():
+            from models import Usuario, Actividad, Clase, Reserva, Pago, Credito, Suspension
+            from datetime import date, time, datetime
+
+            maria = Usuario.query.filter_by(email='maria@gmail.com').first()
+            futbol = Actividad.query.filter_by(nombre='Fútbol').first()
+            padel  = Actividad.query.filter_by(nombre='Pádel').first()
+            voley  = Actividad.query.filter_by(nombre='Vóley').first()
+            admin  = Usuario.query.filter_by(rol='administrador').first()
+
+            hoy = date.today()
+
+            # --- Clases de soporte ---
+            clase_pendiente = Clase(
+                actividad_id=futbol.id,
+                fecha=hoy,
+                hora_inicio=time(10, 0),
+                cupo_maximo=10,
+                precio_clase=2500,
+                activa=True
+            )
+            clase_pagada = Clase(
+                actividad_id=padel.id,
+                fecha=hoy,
+                hora_inicio=time(12, 0),
+                cupo_maximo=10,
+                precio_clase=3000,
+                activa=True
+            )
+            db.session.add_all([clase_pendiente, clase_pagada])
+            db.session.flush()
+
+            # --- Reserva con pago PENDIENTE (senia_pagada=False, monto_pagado=0) ---
+            reserva_pendiente = Reserva(
+                usuario_id=maria.id,
+                clase_id=clase_pendiente.id,
+                tipo='no_abonado',
+                estado='activa',
+                mes=hoy.month,
+                anio=hoy.year,
+                monto_total=2500,
+                monto_pagado=0,
+                senia_pagada=False
+            )
+            db.session.add(reserva_pendiente)
+            db.session.flush()
+
+            # --- Reserva con pago REALIZADO (senia_pagada=True, con Pago asociado) ---
+            reserva_pagada = Reserva(
+                usuario_id=maria.id,
+                clase_id=clase_pagada.id,
+                tipo='no_abonado',
+                estado='activa',
+                mes=hoy.month,
+                anio=hoy.year,
+                monto_total=3000,
+                monto_pagado=1500,
+                senia_pagada=True
+            )
+            db.session.add(reserva_pagada)
+            db.session.flush()
+
+            pago = Pago(
+                reserva_id=reserva_pagada.id,
+                monto=1500,
+                metodo='tarjeta_credito',
+                tipo_pago='senia',
+                fecha=datetime.utcnow(),
+                registrado_por=admin.id
+            )
+            db.session.add(pago)
+
+            # --- Suspension activa ---
+            suspension = Suspension(
+                usuario_id=maria.id,
+                tipo='no_abonado',
+                motivo='Inasistencia sin cancelación previa',
+                activa=True,
+                cantidad_clases=1,
+                monto_original=2500,
+                recargo=125,
+                monto_deuda=2750
+            )
+            db.session.add(suspension)
+
+            # --- Credito para Vóley ---
+            credito = Credito(
+                usuario_id=maria.id,
+                actividad_id=voley.id,
+                monto=2000,
+                monto_restante=2000,
+                origen='clase_suelta_cancelacion',
+                estado='disponible',
+                motivo='Crédito por clase cancelada por el club'
+            )
+            db.session.add(credito)
+
+            db.session.commit()
+            print("✅ seed-colo: datos extra de Maria cargados correctamente.")
+
     @app.cli.command("reset-db")
     def reset_db_command():
         """Borra la base de datos, la recrea y carga los datos de prueba."""
@@ -194,14 +303,14 @@ def ensure_schema_compatibility(app):
 
 def seed_data(app):
     with app.app_context():
-        from models import Usuario, Actividad, Clase, Turno, Credito, TarjetaCredito
+        from models import Usuario, Actividad, Clase, Turno, Credito, TarjetaCredito, Suspension, Reserva, Pago
         from datetime import date, time, timedelta
 
         if Usuario.query.first():
             return
 
         # Usuarios
-        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='lautaromendezportela@gmail.com', rol='administrador')
+        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='masjta756@gmail.com', rol='administrador')
         admin.set_password('admin123')
         emp = Usuario(nombre='Carlos', apellido='Gómez', dni='11111111', email='empleado@club360.com', rol='empleado')
         emp.set_password('emp123')
@@ -215,7 +324,7 @@ def seed_data(app):
         cli3.set_password('12345678')
         cli4 = Usuario(nombre='Jesus', apellido='Diaz', dni='10675222', email='jesus@gmail.com', rol='cliente')
         cli4.set_password('12345678')
-        cli5 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000001', email='laumendezporv@hotmail.com', rol='cliente')
+        cli5 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000001', email='lucianoolivera756@hotmail.com', rol='cliente')
         cli5.set_password('secretoo')
 
         actividades = [
@@ -238,7 +347,16 @@ def seed_data(app):
             estado='disponible',
             motivo='Crédito manual para clase de Vóley 15:00'
         )
-        db.session.add(credito_cli5)
+        credito_cli5b = Credito(
+            usuario_id=cli5.id,
+            actividad_id=voley.id,
+            monto=2000,
+            monto_restante=2000,
+            origen='abono_cancelacion',
+            estado='disponible',
+            motivo='Crédito manual para clase de Vóley 15:00'
+        )
+        db.session.add_all([credito_cli5, credito_cli5b])
         db.session.commit()
         # Tarjeta para laumendezporv@hotmail.com 
         for cli_tar in [cli5]:

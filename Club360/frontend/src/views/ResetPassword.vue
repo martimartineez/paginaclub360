@@ -34,9 +34,6 @@
         <div class="alert alert-success">
           ¡Contraseña actualizada! Ya podés iniciar sesión con tu nueva contraseña.
         </div>
-        <router-link to="/login" class="btn btn-primary" style="display:block;text-align:center;margin-top:16px">
-          Ir al inicio de sesión
-        </router-link>
       </div>
     </div>
   </div>

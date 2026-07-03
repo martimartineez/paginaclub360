@@ -412,7 +412,7 @@ def rechazar_cupo_lista_espera_app(lista_espera_id):
     )
 
     db.session.commit()
-    return jsonify({'mensaje': 'Cupo rechazado. Se lo ofrecimos a la siguiente persona en la lista.'}), 200
+    return jsonify({'mensaje': 'Cupo rechazado.'}), 200
 
 
 @reservas_bp.route('/lista-espera/<int:lista_espera_id>/rechazar', methods=['GET'])

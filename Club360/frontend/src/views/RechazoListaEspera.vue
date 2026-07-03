@@ -10,14 +10,8 @@
       <p class="result-message">{{ result.message }}</p>
 
       <div class="result-actions">
-        <router-link to="/clases" class="btn btn-primary">
-          Ver clases
-        </router-link>
         <router-link v-if="auth.isAuthenticated" to="/mis-reservas" class="btn btn-outline">
           Mis reservas
-        </router-link>
-        <router-link v-else to="/login" class="btn btn-outline">
-          Ingresar
         </router-link>
       </div>
     </div>
