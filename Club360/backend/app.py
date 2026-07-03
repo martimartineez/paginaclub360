@@ -310,7 +310,7 @@ def seed_data(app):
             return
 
         # Usuarios
-        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='masjta756@gmail.com', rol='administrador')
+        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='lautaromendezportela@hotmail.com, rol='administrador')
         admin.set_password('admin123')
         emp = Usuario(nombre='Carlos', apellido='Gómez', dni='11111111', email='empleado@club360.com', rol='empleado')
         emp.set_password('emp123')
@@ -324,7 +324,7 @@ def seed_data(app):
         cli3.set_password('12345678')
         cli4 = Usuario(nombre='Jesus', apellido='Diaz', dni='10675222', email='jesus@gmail.com', rol='cliente')
         cli4.set_password('12345678')
-        cli5 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000001', email='lucianoolivera756@hotmail.com', rol='cliente')
+        cli5 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000001', email='laumendezporv@gmail.com', rol='cliente')
         cli5.set_password('secretoo')
 
         actividades = [
