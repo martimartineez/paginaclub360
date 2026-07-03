@@ -194,7 +194,7 @@ def ensure_schema_compatibility(app):
 
 def seed_data(app):
     with app.app_context():
-        from models import Usuario, Actividad, Clase, Turno
+        from models import Usuario, Actividad, Clase, Turno, Credito, TarjetaCredito
         from datetime import date, time, timedelta
 
         if Usuario.query.first():
@@ -215,6 +215,10 @@ def seed_data(app):
         cli3.set_password('12345678')
         cli4 = Usuario(nombre='Jesus', apellido='Diaz', dni='10675222', email='jesus@gmail.com', rol='cliente')
         cli4.set_password('12345678')
+        cli5 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000001', email='laumendezporv@hotmail.com', rol='cliente')
+        cli5.set_password('secretoo')
+        cli6 = Usuario(nombre='Lautaro', apellido='Mendez', dni='30000002', email='lautaromendezportela@gmail.com', rol='cliente')
+        cli6.set_password('secretoo')
 
         actividades = [
             Actividad(nombre='Fútbol', descripcion='Fútbol 5 en cancha de césped sintético', precio_clase=2500),
@@ -222,7 +226,33 @@ def seed_data(app):
             Actividad(nombre='Básquet', descripcion='Básquet en cancha reglamentaria', precio_clase=2000),
             Actividad(nombre='Vóley', descripcion='Vóley en cancha de arena', precio_clase=2000),
         ]
-        db.session.add_all([admin, emp, cli, cli1, cli2, cli3, cli4] + actividades)
+        db.session.add_all([admin, emp, cli, cli1, cli2, cli3, cli4, cli5, cli6] + actividades)
+        db.session.commit()
+
+        # Credito manual para laumendezporv@hotmail.com — Voley 15:00
+        voley = Actividad.query.filter_by(nombre='Vóley').first()
+        credito_cli5 = Credito(
+            usuario_id=cli5.id,
+            actividad_id=voley.id,
+            monto=2000,
+            monto_restante=2000,
+            origen='abono_cancelacion',
+            estado='disponible',
+            motivo='Crédito manual para clase de Vóley 15:00'
+        )
+        db.session.add(credito_cli5)
+        db.session.commit()
+        # Tarjeta para laumendezporv@hotmail.com y lautaromendezportela@gmail.com
+        for cli_tar in [cli5, cli6]:
+            tarjeta = TarjetaCredito(
+                usuario_id=cli_tar.id,
+                ultimos_4='2222',
+                titular='Juan Perez',
+                vencimiento='09/32',
+                activa=True
+            )
+            db.session.add(tarjeta)
+
         db.session.commit()
 
         # # Crear turnos demo (generan clases automáticamente hasta fin de año)
