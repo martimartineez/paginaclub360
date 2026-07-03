@@ -310,7 +310,7 @@ def seed_data(app):
             return
 
         # Usuarios
-        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='lautaromendezportela@hotmail.com, rol='administrador')
+        admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='lautaromendezportela@hotmail.com', rol='administrador')
         admin.set_password('admin123')
         emp = Usuario(nombre='Carlos', apellido='Gómez', dni='11111111', email='empleado@club360.com', rol='empleado')
         emp.set_password('emp123')
