@@ -313,7 +313,7 @@ def seed_data(app):
         admin = Usuario(nombre='Admin', apellido='Club', dni='00000000', email='lautaromendezportela@gmail.com', rol='administrador')
         admin.set_password('admin123')
         emp = Usuario(nombre='Carlos', apellido='Gómez', dni='11111111', email='empleado@club360.com', rol='empleado')
-        emp.set_password('emp123')
+        emp.set_password('12345678')
         cli = Usuario(nombre='Juan', apellido='Pérez', dni='22222222', email='cliente@club360.com', rol='cliente')
         cli.set_password('cliente123')
         cli1 = Usuario(nombre='Alejandro', apellido='Camacho', dni='44000332', email='ale@gmail.com', rol='cliente')
