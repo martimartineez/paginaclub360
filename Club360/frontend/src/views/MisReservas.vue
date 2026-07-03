@@ -237,7 +237,7 @@ function mensajeCancelacion(data) {
   if (data.info) partes.push(data.info)
   if (data.credito_generado > 0) partes.push(`Credito generado: $${data.credito_generado.toLocaleString()}`)
   if (data.descuento_aplicado > 0) partes.push(`Descuento aplicado: $${data.descuento_aplicado.toLocaleString()}`)
-  if (data.devolucion_senia > 0) partes.push(`Senia a devolver: $${data.devolucion_senia.toLocaleString()}`)
+  if (data.devolucion_senia > 0) partes.push(`Seña a devolver: $${data.devolucion_senia.toLocaleString()}`)
   if (data.advertencia) partes.push(data.advertencia)
   return partes.join(' - ')
 }

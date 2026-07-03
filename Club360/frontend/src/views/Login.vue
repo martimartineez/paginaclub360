@@ -54,7 +54,7 @@
 
         <div class="cred-list">
           <div
-            @click="fillDemo('admin@club360.com','admin123')"
+            @click="fillDemo('lautaromendezportela@gmail.com','admin123')"
             class="cred-item"
           >
             <span class="badge badge-green">Admin</span>
