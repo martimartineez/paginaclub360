@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from email_service import enviar_aviso_cupo_liberado
+from email_service import enviar_aviso_cupo_liberado, enviar_aviso_clase_cancelada
 from models import db, Clase, Credito, ListaEspera, MovimientoFinanciero, Reserva, Turno
 
 
@@ -148,21 +148,23 @@ def cancelar_clase_por_admin(clase_id, actor_id, ahora=None):
         resultado['reservas_canceladas'] += 1
 
         if reserva.tipo == 'no_abonado':
-            senia = min(_money(reserva.monto_pagado), _money(reserva.monto_total) * 0.5)
-            if senia > 0:
-                _registrar_movimiento(reserva, 'devolucion_senia', senia, actor_id)
-                resultado['devolucion_senia'] += senia
+            monto_a_devolver = _money(reserva.monto_pagado)
+            if monto_a_devolver > 0:
+                _registrar_movimiento(reserva, 'devolucion_senia', monto_a_devolver, actor_id)
+                resultado['devolucion_senia'] += monto_a_devolver
                 resultado['movimientos'].append({
                     'usuario_id': reserva.usuario_id,
                     'reserva_id': reserva.id,
                     'tipo': 'devolucion_senia',
-                    'monto': senia
+                    'monto': monto_a_devolver
                 })
+            enviar_aviso_clase_cancelada(reserva, devolucion_senia=monto_a_devolver)
             continue
 
         valor_clase = calcular_valor_clase_abono(reserva)
         abono = reserva.abono
         if not abono or valor_clase <= 0:
+            enviar_aviso_clase_cancelada(reserva)
             continue
 
         abono_pagado = _money(abono.monto_pagado) >= _money(abono.monto_total)
@@ -183,6 +185,7 @@ def cancelar_clase_por_admin(clase_id, actor_id, ahora=None):
                 'tipo': 'credito_abono_pagado',
                 'monto': valor_clase
             })
+            enviar_aviso_clase_cancelada(reserva, credito_generado=valor_clase)
         else:
             deuda_abono = max(0, _money(abono.monto_total) - _money(abono.monto_pagado))
             descuento = min(valor_clase, deuda_abono)
@@ -200,13 +203,16 @@ def cancelar_clase_por_admin(clase_id, actor_id, ahora=None):
                     'tipo': 'descuento_abono_pendiente',
                     'monto': descuento
                 })
+                enviar_aviso_clase_cancelada(reserva, descuento_abono=descuento)
+            else:
+                enviar_aviso_clase_cancelada(reserva)
 
     resultado['devolucion_senia'] = _money(resultado['devolucion_senia'])
     resultado['descuento_abonos'] = _money(resultado['descuento_abonos'])
     resultado['creditos_generados'] = _money(resultado['creditos_generados'])
     resultado['mensaje'] = (
         f"Clase cancelada. {resultado['reservas_canceladas']} reserva(s) afectada(s), "
-        f"${resultado['devolucion_senia']:,.0f} en senias a devolver, "
+        f"${resultado['devolucion_senia']:,.0f} a devolver por clases sueltas, "
         f"${resultado['descuento_abonos']:,.0f} descontados de abonos pendientes y "
         f"${resultado['creditos_generados']:,.0f} en creditos generados."
     )
@@ -270,7 +276,7 @@ def cancelar_turno_por_admin(turno_id, actor_id, desde=None, ahora=None):
     resultado['mensaje'] = (
         f"Turno cancelado. {resultado['clases_canceladas']} clase(s) futura(s) cancelada(s), "
         f"{resultado['reservas_canceladas']} reserva(s) afectada(s), "
-        f"${resultado['devolucion_senia']:,.0f} en senias a devolver, "
+        f"${resultado['devolucion_senia']:,.0f} a devolver por clases sueltas, "
         f"${resultado['descuento_abonos']:,.0f} descontados de abonos pendientes y "
         f"${resultado['creditos_generados']:,.0f} en creditos generados."
     )

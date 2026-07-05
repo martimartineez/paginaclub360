@@ -208,3 +208,39 @@ def enviar_mail_recuperacion_password(usuario, token):
         'Club360'
     )
     return enviar_mail(usuario.email, asunto, cuerpo)
+
+
+def enviar_aviso_clase_cancelada(reserva, devolucion_senia=0, credito_generado=0, descuento_abono=0):
+    """Avisa al cliente que el administrador cancelo la clase en la que
+    tenia una reserva activa, e informa que paso con el dinero involucrado
+    (devolucion de senia, credito generado o descuento al abono)."""
+    usuario = reserva.cliente
+    clase = reserva.clase
+    if not usuario or not usuario.email or not clase:
+        print('[email] No se envio aviso de clase cancelada: faltan datos del usuario o de la clase', flush=True)
+        return False
+
+    actividad = clase.actividad.nombre if clase.actividad else 'la clase'
+    fecha = clase.fecha.strftime('%d/%m/%Y') if clase.fecha else ''
+    hora = clase.hora_inicio.strftime('%H:%M') if clase.hora_inicio else ''
+    nombre = usuario.nombre or 'cliente'
+
+    detalle_dinero = ''
+    if devolucion_senia > 0:
+        detalle_dinero = f'Se te devolvera lo abonado por esta clase (${devolucion_senia:,.0f}).\n'
+    elif credito_generado > 0:
+        detalle_dinero = f'Se genero un credito a tu favor por ${credito_generado:,.0f} para usar en otra clase de la misma actividad.\n'
+    elif descuento_abono > 0:
+        detalle_dinero = f'Se desconto ${descuento_abono:,.0f} de tu abono pendiente.\n'
+
+    asunto = f'Club360 - Se cancelo tu clase de {actividad}'
+    cuerpo = (
+        f'Hola {nombre},\n\n'
+        f'Te informamos que la clase de {actividad} del {fecha} a las {hora} hs fue cancelada por el club.\n\n'
+        f'{detalle_dinero}\n'
+        'Disculpa las molestias.\n\n'
+        'Saludos,\n'
+        'Club360'
+    )
+
+    return enviar_mail(usuario.email, asunto, cuerpo)
