@@ -217,7 +217,7 @@
       <div v-else-if="inscriptos.length === 0" style="color:var(--text-muted);font-size:14px">Sin inscriptos aún.</div>
       <table v-else>
         <thead>
-          <tr><th>Cliente</th><th>DNI</th><th>Tipo</th><th>Seña</th><th>Pagado</th></tr>
+          <tr><th>Cliente</th><th>DNI</th><th>Tipo</th><th>Asistencia</th><th>Seña</th><th>Pagado</th></tr>
         </thead>
         <tbody>
           <tr v-for="r in inscriptos" :key="r.id">
@@ -226,6 +226,7 @@
               </td>
             <td style="color:var(--text-muted)">{{ r.usuario?.dni }}</td>
             <td><span class="badge" :class="r.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">{{ r.tipo }}</span></td>
+            <td><span class="badge" :class="asistenciaBadge(r)">{{ asistenciaLabel(r) }}</span></td>
             <td>
               <span :class="r.senia_pagada ? 'text-green' : 'text-danger'">
                 {{ r.senia_pagada ? '✓' : '✗' }}
@@ -506,6 +507,18 @@ function reservaEsFutura(reserva) {
   const hora = String(horaInicio)
   const horaNormalizada = hora.length === 5 ? `${hora}:00` : hora
   return new Date(`${fecha}T${horaNormalizada}`) > new Date()
+}
+
+function asistenciaLabel(reserva) {
+  if (reserva?.asistida) return 'Asistió'
+  if (reserva?.falto) return 'Faltó'
+  return 'Pendiente'
+}
+
+function asistenciaBadge(reserva) {
+  if (reserva?.asistida) return 'badge-green'
+  if (reserva?.falto) return 'badge-red'
+  return 'badge-yellow'
 }
 
 function abrirEditarCupo() {
