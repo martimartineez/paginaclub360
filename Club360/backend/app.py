@@ -10,6 +10,8 @@ import os
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 from models import db
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from routes.auth import auth_bp
 from routes.clases import clases_bp
 from routes.reservas import reservas_bp
@@ -51,7 +53,59 @@ def create_app():
     def health():
         return jsonify({'status': 'ok', 'app': 'Club 360'}), 200
 
+    _iniciar_scheduler(app)
+
     return app
+
+
+def _iniciar_scheduler(app):
+    scheduler = BackgroundScheduler(timezone='America/Argentina/Buenos_Aires')
+    scheduler.add_job(
+        func=lambda: _tarea_recordatorio_abonos(app),
+        trigger=CronTrigger(day=10, hour=9, minute=0),
+        id='recordatorio_abonos_dia_10',
+        replace_existing=True
+    )
+    scheduler.start()
+    print('[scheduler] Scheduler iniciado. Recordatorio de abonos programado para el dia 10 de cada mes a las 9:00 AM.', flush=True)
+
+
+def _tarea_recordatorio_abonos(app):
+    """Tarea programada: dia 10 de cada mes a las 9 AM.
+    Envia un recordatorio por mail a cada cliente abonado que tenga
+    deuda pendiente en el mes actual."""
+    from datetime import date
+    from models import Abono, Usuario
+    from email_service import enviar_recordatorio_pago_abono
+
+    hoy = date.today()
+    print(f'[scheduler] Ejecutando recordatorio de abonos ({hoy})', flush=True)
+
+    with app.app_context():
+        abonos_pendientes = (
+            Abono.query
+            .filter(
+                Abono.mes == hoy.month,
+                Abono.anio == hoy.year,
+                Abono.monto_pagado < Abono.monto_total
+            )
+            .all()
+        )
+
+        # Agrupar por usuario para mandar un solo mail con todos sus abonos
+        por_usuario = {}
+        for abono in abonos_pendientes:
+            por_usuario.setdefault(abono.usuario_id, []).append(abono)
+
+        enviados = 0
+        for usuario_id, abonos in por_usuario.items():
+            usuario = Usuario.query.get(usuario_id)
+            if usuario and usuario.activo and usuario.email:
+                enviado = enviar_recordatorio_pago_abono(usuario, abonos)
+                if enviado:
+                    enviados += 1
+
+        print(f'[scheduler] Recordatorio de abonos: {enviados} mails enviados de {len(por_usuario)} clientes con deuda.', flush=True)
 
 
 def ensure_schema_compatibility(app):

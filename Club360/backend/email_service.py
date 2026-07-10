@@ -156,3 +156,39 @@ def enviar_aviso_alta_demanda(clase, total_en_espera):
     for admin in admins:
         if admin.email:
             enviar_mail(admin.email, asunto, cuerpo)
+
+
+def enviar_recordatorio_pago_abono(usuario, abonos_pendientes):
+    """Recordatorio del dia 10: avisa al cliente que hoy vence el plazo
+    para pagar su/s abono/s del mes. Recibe la lista de abonos con deuda."""
+    if not usuario.email:
+        return False
+
+    from datetime import date
+    hoy = date.today()
+    mes_nombre = [
+        'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+    ][hoy.month - 1]
+
+    detalle = ''
+    for abono in abonos_pendientes:
+        actividad = abono.actividad.nombre if abono.actividad else 'Actividad'
+        deuda = round(float(abono.monto_total or 0) - float(abono.monto_pagado or 0), 2)
+        detalle += f'  - {actividad}: ${deuda:,.0f} pendientes\n'
+
+    frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+    link_pagos = f'{frontend_url}/mis-pagos'
+
+    asunto = f'Club360 - Hoy vence el plazo para pagar tu abono de {mes_nombre}'
+    cuerpo = (
+        f'Hola {usuario.nombre},\n\n'
+        f'Hoy es el último día para abonar tu mensualidad de {mes_nombre}.\n\n'
+        f'Abonos pendientes:\n{detalle}\n'
+        f'Realizá el pago antes de las 23:59 para evitar la suspensión de tu turno.\n\n'
+        f'{link_pagos}\n\n'
+        'Saludos,\n'
+        'Club360'
+    )
+
+    return enviar_mail(usuario.email, asunto, cuerpo)
