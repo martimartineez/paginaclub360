@@ -44,6 +44,19 @@ def puede_diferir_pago_abono():
     return es_periodo_gracia()
 
 
+def clase_ya_ocurrio(clase, ahora=None):
+    if not clase or not clase.fecha or not clase.hora_inicio:
+        return False
+    return datetime.combine(clase.fecha, clase.hora_inicio) <= (ahora or datetime.now())
+
+
+def abono_pago_vencido(abono, hoy=None):
+    if not abono or not abono.mes or not abono.anio:
+        return False
+    hoy = hoy or date.today()
+    return hoy > date(abono.anio, abono.mes, 10)
+
+
 def validar_prioridad_lista_espera(clase, usuario_id):
     if not clase or not clase.fecha:
         return None
@@ -491,6 +504,7 @@ def get_pagos_resumen():
         monto_total = float(abono.monto_total or 0)
         monto_pagado = float(abono.monto_pagado or 0)
         deuda = max(0, monto_total - monto_pagado)
+        vencido = deuda > 0 and abono_pago_vencido(abono, hoy)
 
         # Usamos la primera clase del abono para extraer día y horario descriptivo en la interfaz
         primera_reserva = abono.reservas[0] if abono.reservas else None
@@ -509,12 +523,18 @@ def get_pagos_resumen():
             'mes': abono.mes,
             'anio': abono.anio,
             'fecha_creacion': abono.fecha_creacion.isoformat() if abono.fecha_creacion else None,
-            'vence_dia_10': deuda > 0 and hoy.day <= 10,
+            'vence_dia_10': deuda > 0 and not vencido,
+            'abono_vencido': vencido,
+            'estado_pago': 'vencido' if vencido else ('pendiente' if deuda > 0 else 'pagado'),
             'deuda_label': f'Abono pendiente — ${deuda:,.0f}' if deuda > 0 else 'Pagado'
         }
 
         if deuda > 0:
-            pendientes.append(item)
+            if vencido:
+                item['deuda_label'] = f'No pagado - ${deuda:,.0f}'
+                pagados.append(item)
+            else:
+                pendientes.append(item)
         else:
             pagados.append(item)
 
@@ -528,6 +548,7 @@ def get_pagos_resumen():
         monto_total = float(r.monto_total or 0)
         deuda = max(0, monto_total - monto_pagado)
         clase = r.clase
+        ocurrida = clase_ya_ocurrio(clase)
 
         item = {
             'reserva_id': r.id,
@@ -546,6 +567,7 @@ def get_pagos_resumen():
             'anio': r.anio,
             'fecha_creacion': r.fecha_creacion.isoformat() if r.fecha_creacion else None,
             'qr_code': r.qr_code,
+            'clase_ocurrida': ocurrida,
         }
 
         if r.estado == 'cancelada':
@@ -553,6 +575,10 @@ def get_pagos_resumen():
             continue
 
         if not r.senia_pagada or deuda > 0:
+            if ocurrida:
+                item['deuda_label'] = f'No pagado - ${deuda:,.0f}'
+                pagados.append(item)
+                continue
             if r.senia_pagada and deuda > 0:
                 item['deuda_label'] = f'Restante (50%) — ${deuda:,.0f}'
             else:
@@ -561,6 +587,41 @@ def get_pagos_resumen():
         else:
             item['deuda_label'] = 'Pagado'
             pagados.append(item)
+
+    pagos_suspension = (
+        Pago.query
+        .join(Suspension, Pago.suspension_id == Suspension.id)
+        .filter(
+            Suspension.usuario_id == user_id,
+            Pago.tipo_pago == 'suspension'
+        )
+        .order_by(Pago.fecha.desc())
+        .all()
+    )
+    for pago in pagos_suspension:
+        suspension = pago.suspension
+        monto = float(pago.monto or 0)
+        es_abono = suspension and suspension.tipo == 'abonado'
+        tipo_label = 'Suspension de abono mensual' if es_abono else 'Suspension de clase suelta'
+        pagados.append({
+            'pago_id': pago.id,
+            'suspension_id': suspension.id if suspension else pago.suspension_id,
+            'abono_id': pago.abono_id,
+            'tipo': 'suspension',
+            'tipo_label': tipo_label,
+            'estado': 'pagada',
+            'actividad': tipo_label,
+            'fecha_clase': pago.fecha.date().isoformat() if pago.fecha else None,
+            'fecha_pago': pago.fecha.isoformat() if pago.fecha else None,
+            'dia_semana': 'Pago',
+            'hora_inicio': '',
+            'monto_total': monto,
+            'monto_pagado': monto,
+            'deuda': 0,
+            'cantidad_clases': suspension.cantidad_clases if suspension else 0,
+            'fecha_creacion': pago.fecha.isoformat() if pago.fecha else None,
+            'deuda_label': 'Pagado'
+        })
 
     return jsonify({'pendientes': pendientes, 'pagados': pagados}), 200
 
@@ -733,6 +794,9 @@ def registrar_pago(reserva_id):
     if metodo == 'efectivo' and user.rol not in ('empleado', 'administrador'):
         return jsonify({'error': 'El pago en efectivo debe registrarlo un empleado'}), 403
 
+    if reserva.tipo == 'no_abonado' and clase_ya_ocurrio(reserva.clase):
+        return jsonify({'error': 'No se puede pagar una clase que ya ocurrio'}), 400
+
     pago = Pago(
         reserva_id=reserva_id, monto=monto, metodo=metodo,
         tipo_pago=tipo_pago, registrado_por=int(user_id)
@@ -773,8 +837,6 @@ def registrar_pago_abono(abono_id):
     if abono.monto_pagado >= abono.monto_total:
         for r in abono.reservas:
             r.monto_pagado = r.monto_total
-            if r.estado == 'suspendida':
-                r.estado = 'activa'
         suspensiones = Suspension.query.filter_by(
             abono_id=abono.id,
             tipo='abonado',

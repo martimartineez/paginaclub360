@@ -215,8 +215,6 @@ def pagar_reserva_empleado(uid, reserva_id):
         for reserva_abono in reserva.abono.reservas:
             reserva_abono.monto_pagado = reserva_abono.monto_total
             reserva_abono.senia_pagada = True
-            if reserva_abono.estado == 'suspendida':
-                reserva_abono.estado = 'activa'
         suspensiones = Suspension.query.filter_by(
             abono_id=reserva.abono_id,
             tipo='abonado',

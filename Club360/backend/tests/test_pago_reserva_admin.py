@@ -4,7 +4,7 @@ from datetime import date, time
 from flask import Flask
 from flask_jwt_extended import JWTManager, create_access_token
 
-from models import Abono, Actividad, Clase, Pago, Reserva, Usuario, db
+from models import Abono, Actividad, Clase, Pago, Reserva, Suspension, Usuario, db
 from routes.otros import usuarios_bp
 
 
@@ -133,6 +133,76 @@ class PagoReservaAdminTestCase(unittest.TestCase):
         self.assertEqual(pago.abono_id, abono.id)
         self.assertIsNone(pago.reserva_id)
         self.assertEqual(float(pago.monto), 3000)
+
+    def test_pagar_abono_desde_admin_no_reactiva_reservas_suspendidas(self):
+        abono = Abono(
+            usuario_id=self.cliente.id,
+            actividad_id=self.actividad.id,
+            mes=7,
+            anio=2099,
+            monto_total=2000,
+            monto_pagado=0
+        )
+        db.session.add(abono)
+        db.session.flush()
+
+        reserva_activa = self.crear_reserva(date(2099, 7, 10), pagado=0)
+        reserva_activa.tipo = 'abonado'
+        reserva_activa.abono_id = abono.id
+        reserva_activa.senia_pagada = True
+
+        clase_suspendida = Clase(
+            actividad_id=self.actividad.id,
+            fecha=date(2099, 7, 17),
+            hora_inicio=time(18, 0),
+            cupo_maximo=10,
+            precio_clase=1000
+        )
+        db.session.add(clase_suspendida)
+        db.session.flush()
+        reserva_suspendida = Reserva(
+            usuario_id=self.cliente.id,
+            clase_id=clase_suspendida.id,
+            abono_id=abono.id,
+            tipo='abonado',
+            estado='suspendida',
+            mes=7,
+            anio=2099,
+            monto_total=1000,
+            monto_pagado=0,
+            senia_pagada=True
+        )
+        suspension = Suspension(
+            usuario_id=self.cliente.id,
+            tipo='abonado',
+            abono_id=abono.id,
+            clase_id=clase_suspendida.id,
+            activa=True,
+            cantidad_clases=1,
+            monto_original=1000,
+            recargo=50,
+            monto_deuda=1050,
+            motivo='Abono pendiente vencido.'
+        )
+        db.session.add_all([reserva_suspendida, suspension])
+        db.session.commit()
+
+        response = self.client.post(
+            f'/api/usuarios/{self.cliente.id}/pagar-reserva/{reserva_activa.id}',
+            json={'metodo': 'efectivo'},
+            headers=self.auth_headers()
+        )
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(abono)
+        db.session.refresh(reserva_activa)
+        db.session.refresh(reserva_suspendida)
+        db.session.refresh(suspension)
+        self.assertEqual(float(abono.monto_pagado), 2000)
+        self.assertEqual(float(reserva_activa.monto_pagado), 1000)
+        self.assertEqual(float(reserva_suspendida.monto_pagado), 1000)
+        self.assertEqual(reserva_suspendida.estado, 'suspendida')
+        self.assertFalse(suspension.activa)
 
 
 if __name__ == '__main__':

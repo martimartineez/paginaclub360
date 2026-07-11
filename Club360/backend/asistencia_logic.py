@@ -7,6 +7,7 @@ from qr_asistencia import QrAsistenciaInvalido, leer_token_asistencia
 from suspensiones_logic import (
     sincronizar_suspensiones_usuario,
     tiene_suspension_abonado_para_clase,
+    tiene_suspension_abonado_resuelta_para_clase,
     tiene_suspension_no_abonado,
 )
 
@@ -85,6 +86,12 @@ def _validar_reserva_general(reserva):
             'reserva_cancelada',
             reserva=reserva
         )
+    if reserva.estado == 'suspendida':
+        _rechazar(
+            'No se puede registrar asistencia: la reserva esta suspendida.',
+            'reserva_suspendida',
+            reserva=reserva
+        )
     if not reserva.clase or reserva.clase.cancelada or not reserva.clase.activa:
         _rechazar(
             'No se puede registrar asistencia: la clase está cancelada o inactiva.',
@@ -119,7 +126,7 @@ def _validar_clase_suelta(reserva):
         )
 
 
-def z_validar_abono(reserva, hoy):
+def _validar_abono(reserva, hoy):
     abono = reserva.abono
     if not abono:
         abono = Abono.query.filter_by(
@@ -140,7 +147,11 @@ def z_validar_abono(reserva, hoy):
             reserva=reserva
         )
    
-    if hoy.day >= 11 and _money(abono.monto_pagado) < _money(abono.monto_total):
+    if (
+        hoy.day >= 11
+        and _money(abono.monto_pagado) < _money(abono.monto_total)
+        and not tiene_suspension_abonado_resuelta_para_clase(reserva.usuario_id, abono.id, reserva.clase)
+    ):
         _rechazar(
             'No se puede registrar asistencia: el abono no está pagado y ya pasó el día 10.',
             'abono_pago_vencido',
@@ -174,6 +185,11 @@ def registrar_asistencia_qr(qr_data, actor_id, hoy=None, ahora=None):
 
 
     if reserva.asistencia_vencida(ahora):
+        marcar_falta_reserva(reserva, hoy=hoy)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
         _rechazar(
             'No se puede registrar asistencia: La clase ya finalizo',
             'asistencia_fuera_de_tiempo',

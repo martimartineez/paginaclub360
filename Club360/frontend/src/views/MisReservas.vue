@@ -57,8 +57,8 @@
         </div>
 
         <!-- QR Code -->
-        <div class="reserva-actions" v-if="r.estado !== 'cancelada' || r.asistida">
-          <button v-if="!r.falto" class="btn btn-outline btn-sm" @click="toggleQR(r)">
+        <div class="reserva-actions" v-if="puedeMostrarQR(r) || puedeCancelarReserva(r)">
+          <button v-if="puedeMostrarQR(r)" class="btn btn-outline btn-sm" @click="toggleQR(r)">
             {{ qrVisible === r.id ? 'Ocultar QR' : 'Ver QR' }}
           </button>
           <button
@@ -72,7 +72,7 @@
         <div v-else class="reserva-actions">
           <span class="badge badge-red">Cancelada</span>
         </div>
-        <div v-if="(r.estado !== 'cancelada' || r.asistida) && !r.falto && qrVisible === r.id" class="qr-section">
+        <div v-if="puedeMostrarQR(r) && qrVisible === r.id" class="qr-section">
           <p class="qr-label">Tu código QR de asistencia</p>
           <img
             v-if="r.qr_code"
@@ -199,6 +199,7 @@ function formatFecha(f) {
 }
 
 function toggleQR(r) {
+  if (!puedeMostrarQR(r)) return
   qrVisible.value = qrVisible.value === r.id ? null : r.id
 }
 
@@ -221,6 +222,11 @@ function esReservaFutura(r) {
 
 function puedeCancelarReserva(r) {
   return r?.estado === 'activa' && !r.asistida && !r.falto && esReservaFutura(r)
+}
+
+function puedeMostrarQR(r) {
+  const estado = String(r?.estado || '').toLowerCase()
+  return estado === 'activa' && !r.asistida && !r.falto
 }
 
 function mensajeCancelacion(data) {

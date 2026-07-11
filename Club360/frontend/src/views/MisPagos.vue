@@ -74,7 +74,7 @@
 
               <template v-else>
                 <button
-                  v-if="!item.senia_pagada"
+                  v-if="!item.senia_pagada && !item.clase_ocurrida"
                   class="btn btn-secondary btn-sm"
                   @click="abrirPagoIndividual(item, 'senia')"
                 >
@@ -88,7 +88,7 @@
                   💳 Pagar total ${{ item.monto_total?.toLocaleString() }}
                 </button> -->
                 <button
-                  v-if="item.senia_pagada && item.deuda > 0"
+                  v-if="item.senia_pagada && item.deuda > 0 && !item.clase_ocurrida"
                   class="btn btn-primary btn-sm"
                   @click="abrirPagoIndividual(item, 'restante')"
                 >
@@ -211,7 +211,7 @@
 
       <div class="seccion" style="margin-top:32px">
         <div class="seccion-header">
-          <h3>Pagado</h3>
+          <h3>Historial de pagos</h3>
           <span class="badge badge-blue">{{ pagados.length }}</span>
         </div>
 
@@ -220,33 +220,46 @@
         </div>
 
         <div v-else class="pagos-lista">
-          <div v-for="item in pagados" :key="item.tipo === 'abonado' ? 'abono-' + item.abono_id : 'reserva-' + item.reserva_id" class="pago-card card pago-pagado">
+          <div v-for="item in pagados" :key="historialKey(item)" class="pago-card card pago-pagado">
             <div class="pago-header">
               <span class="sport-emoji">{{ sportEmoji(item.actividad) }}</span>
               <div class="pago-info">
                 <div class="pago-titulo">
                   <h4>{{ item.actividad }}</h4>
-                  <span class="badge" :class="item.tipo === 'abonado' ? 'badge-green' : 'badge-blue'">
-                    {{ item.tipo === 'abonado' ? 'Abono Mensual' : 'Clase suelta' }}
+                  <span class="badge" :class="historialBadgeClass(item)">
+                    {{ historialTipoLabel(item) }}
                   </span>
                   <span v-if="item.estado === 'cancelada'" class="badge badge-red">Cancelada</span>
+                  <span v-else-if="item.deuda > 0" class="badge badge-red">No pagado</span>
+                  <span v-else class="badge badge-green">Pagado</span>
                 </div>
-                <p class="pago-fecha">
+                <p v-if="item.tipo === 'suspension'" class="pago-fecha">
+                  Pago <span v-if="item.fecha_pago">· {{ formatFecha(item.fecha_pago.slice(0, 10)) }}</span>
+                  <span v-if="item.cantidad_clases">· {{ item.cantidad_clases }} clase(s)</span>
+                </p>
+                <p v-else class="pago-fecha">
                   {{ item.dia_semana }} <span v-if="item.fecha_clase">· {{ formatFecha(item.fecha_clase) }}</span> · {{ item.hora_inicio }} hs
                 </p>
               </div>
               <div class="pago-monto-col">
-                <span class="monto-pagado-ok">${{ item.monto_pagado?.toLocaleString() }}</span>
-                <span class="monto-label">pagado</span>
+                <span :class="item.deuda > 0 ? 'monto-deuda' : 'monto-pagado-ok'">
+                  ${{ (item.deuda > 0 ? item.deuda : item.monto_pagado)?.toLocaleString() }}
+                </span>
+                <span class="monto-label">{{ item.deuda > 0 ? 'pendiente' : 'pagado' }}</span>
               </div>
             </div>
 
             <div class="pago-progreso">
               <div class="progreso-barra">
-                <div class="progreso-fill progreso-completo" style="width:100%"></div>
+                <div
+                  class="progreso-fill"
+                  :class="{ 'progreso-completo': item.deuda <= 0 }"
+                  :style="{ width: progresoWidth(item) + '%' }"
+                ></div>
               </div>
               <span class="progreso-txt">
                 ${{ item.monto_pagado?.toLocaleString() }} de ${{ item.monto_total?.toLocaleString() }}
+                <span v-if="item.deuda > 0">- pendiente ${{ item.deuda?.toLocaleString() }}</span>
               </span>
             </div>
           </div>
@@ -366,6 +379,24 @@ function formatFecha(fechaStr) {
 function progresoWidth(item) {
   if (!item.monto_total) return 0
   return Math.min(100, (item.monto_pagado / item.monto_total) * 100)
+}
+
+function historialKey(item) {
+  if (item.tipo === 'abonado') return `abono-${item.abono_id}`
+  if (item.tipo === 'suspension') return `suspension-${item.suspension_id || item.pago_id}`
+  return `reserva-${item.reserva_id}`
+}
+
+function historialTipoLabel(item) {
+  if (item.tipo === 'abonado') return 'Abono Mensual'
+  if (item.tipo === 'suspension') return 'Suspension'
+  return 'Clase suelta'
+}
+
+function historialBadgeClass(item) {
+  if (item.tipo === 'abonado') return 'badge-green'
+  if (item.tipo === 'suspension') return 'badge-yellow'
+  return 'badge-blue'
 }
 
 async function fetchPagos() {

@@ -148,6 +148,12 @@ class AsistenciaQrTestCase(unittest.TestCase):
         db.session.commit()
         self.assert_rechazo(reserva, 'suspension_clase_suelta')
 
+    def test_rechaza_reserva_suspendida(self):
+        reserva = self.crear_reserva_abono(0)
+        reserva.estado = 'suspendida'
+        db.session.commit()
+        self.assert_rechazo(reserva, 'reserva_suspendida')
+
     def test_rechaza_abono_impago_despues_del_dia_10(self):
         reserva = self.crear_reserva_abono(0)
         self.assert_rechazo(reserva, 'abono_pago_vencido')

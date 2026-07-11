@@ -59,6 +59,10 @@ def tiene_suspension_abonado_para_clase(usuario_id, clase):
     return any(_clase_misma_unidad_turno(s, clase) for s in suspensiones)
 
 
+def tiene_suspension_abonado_resuelta_para_clase(usuario_id, abono_id, clase):
+    return _suspension_abonado_resuelta_para_clase(usuario_id, abono_id, clase) is not None
+
+
 def reservas_sueltas_con_inasistencia_pendiente(usuario_id):
     hoy = date.today()
     reservas = (
@@ -75,8 +79,24 @@ def reservas_sueltas_con_inasistencia_pendiente(usuario_id):
     )
     return [
         r for r in reservas
-        if _deuda_reserva(r) > 0 and not _tiene_asistencia(r)
+        if _deuda_reserva(r) > 0
+        and not _tiene_asistencia(r)
+        and not _cubierta_por_suspension_resuelta(r)
     ]
+
+
+def _cubierta_por_suspension_resuelta(reserva):
+    if not reserva.clase or not reserva.clase.fecha or not reserva.clase.hora_inicio:
+        return False
+
+    inicio_clase = datetime.combine(reserva.clase.fecha, reserva.clase.hora_inicio)
+    return Suspension.query.filter(
+        Suspension.usuario_id == reserva.usuario_id,
+        Suspension.tipo == 'no_abonado',
+        Suspension.activa.is_(False),
+        Suspension.fecha_levantamiento.isnot(None),
+        Suspension.fecha_levantamiento >= inicio_clase
+    ).first() is not None
 
 
 def _upsert_suspension_no_abonado(usuario_id):
@@ -130,6 +150,18 @@ def _find_suspension_abonado(usuario_id, abono_id, turno_id, clase_id):
     return query.first()
 
 
+def _suspension_abonado_resuelta_para_clase(usuario_id, abono_id, clase):
+    if not clase:
+        return None
+    query = Suspension.query.filter_by(
+        usuario_id=usuario_id,
+        tipo='abonado',
+        abono_id=abono_id,
+        activa=False
+    ).filter(Suspension.fecha_levantamiento.isnot(None))
+    return next((s for s in query.all() if _clase_misma_unidad_turno(s, clase)), None)
+
+
 def _upsert_suspensiones_abonos_vencidos(usuario_id):
     hoy = date.today()
     if hoy.day <= ULTIMO_DIA_PAGO_ABONO:
@@ -168,6 +200,8 @@ def _upsert_suspensiones_abonos_vencidos(usuario_id):
         for grupo_reservas in grupos.values():
             representante = grupo_reservas[0].clase
             if not representante:
+                continue
+            if _suspension_abonado_resuelta_para_clase(usuario_id, abono.id, representante):
                 continue
 
             fin_periodo = date(abono.anio, abono.mes, ULTIMO_DIA_PAGO_ABONO)
@@ -247,8 +281,6 @@ def resolver_suspension_con_pago(suspension, actor_id, metodo):
     if not suspension.activa:
         raise ValueError('La suspension ya fue resuelta')
 
-    monto_original = _money(suspension.monto_original)
-    recargo = _money(suspension.recargo)
     total = _money(suspension.monto_deuda)
 
     pago = Pago(
@@ -260,39 +292,6 @@ def resolver_suspension_con_pago(suspension, actor_id, metodo):
         registrado_por=actor_id
     )
     db.session.add(pago)
-
-    if suspension.tipo == 'abonado' and suspension.abono:
-        abono = suspension.abono
-        abono.monto_pagado = min(
-            _money(abono.monto_total),
-            _money(abono.monto_pagado) + monto_original
-        )
-
-        pendiente = monto_original
-        reservas = [
-            r for r in abono.reservas
-            if r.clase and _clase_misma_unidad_turno(suspension, r.clase)
-        ]
-        for reserva in sorted(reservas, key=lambda r: r.clase.fecha):
-            if pendiente <= 0:
-                break
-            deuda = _deuda_reserva(reserva)
-            if deuda <= 0:
-                continue
-            pago_reserva = min(deuda, pendiente)
-            reserva.monto_pagado = _money(reserva.monto_pagado) + pago_reserva
-            pendiente -= pago_reserva
-            if _money(reserva.monto_pagado) >= _money(reserva.monto_total):
-                reserva.senia_pagada = True
-
-        for reserva in reservas:
-            if reserva.estado == 'suspendida':
-                reserva.estado = 'activa'
-
-    if suspension.tipo == 'no_abonado':
-        for reserva in reservas_sueltas_con_inasistencia_pendiente(suspension.usuario_id):
-            reserva.monto_pagado = reserva.monto_total
-            reserva.senia_pagada = True
 
     suspension.activa = False
     suspension.fecha_levantamiento = datetime.utcnow()

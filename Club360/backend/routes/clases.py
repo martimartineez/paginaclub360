@@ -208,6 +208,7 @@ def get_detalle_abono():
     # Solo clases desde HOY (no pasadas) hasta fin del mes actual
     clases_mes = Clase.query.filter_by(
         activa=True,
+        cancelada=False,
         actividad_id=actividad_id,
         hora_inicio=hora_obj
     ).filter(
